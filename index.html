@@ -94,6 +94,41 @@
   datalist{display:none}
   .suggest{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .suggest .tag{cursor:pointer}
+  /* 勾选式组（边练边打钩） */
+  .setck{display:flex;align-items:center;gap:10px;background:var(--card2);
+    border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:8px;cursor:pointer}
+  .setck input{width:22px;height:22px;flex:0 0 auto;accent-color:var(--green);margin:0}
+  .setck .si{font-size:13px;color:var(--sub);min-width:18px}
+  .setck .sv{font-size:15px;font-weight:600}
+  .setck .sr{font-size:12px;color:var(--sub);margin-left:auto}
+  .setck.done .sv{color:var(--green);text-decoration:line-through;opacity:.7}
+  /* 组间休息倒计时条 */
+  .rest-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;width:min(92%,612px);
+    background:var(--card);border:1px solid var(--accent);border-radius:14px;padding:12px 14px;
+    z-index:60;box-shadow:0 8px 30px rgba(0,0,0,.5);display:none}
+  .rest-bar.show{display:block}
+  .rest-bar .rt-top{display:flex;align-items:center;justify-content:space-between}
+  .rest-bar .rt-time{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent)}
+  .rest-bar .rt-lbl{font-size:13px;color:var(--sub)}
+  .rest-bar .rt-btns{display:flex;gap:8px;margin-top:10px}
+  .rest-bar .rt-btns .btn{padding:9px}
+  .rest-prog{height:5px;background:var(--card2);border-radius:999px;margin-top:10px;overflow:hidden}
+  .rest-prog>div{height:100%;background:var(--accent);width:100%;transition:width .25s linear}
+  /* 模板 */
+  .tpl-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-top:14px}
+  .tpl-card .tname{font-weight:700;font-size:16px}
+  .tpl-card .tmeta{font-size:12px;color:var(--sub);margin-top:2px}
+  .tpl-card .tex{font-size:13px;color:var(--text);margin-top:8px;line-height:1.7}
+  .tpl-card .tact{display:flex;gap:8px;margin-top:12px}
+  .tpl-ex-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .tpl-ex-row input{flex:1}
+  /* 历史选择导出 */
+  .hist-day .d{display:flex;align-items:center;gap:8px}
+  .hist-day .d input{width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);margin:0}
+  .sel-bar{position:sticky;top:54px;z-index:15;display:flex;gap:8px;align-items:center;
+    background:rgba(15,17,21,.92);backdrop-filter:blur(8px);padding:10px 0;border-bottom:1px solid var(--line)}
+  .sel-bar .btn.sm{flex:0 0 auto}
+  .sel-bar .scount{font-size:13px;color:var(--sub);margin-left:auto}
 </style>
 </head>
 <body>
@@ -110,6 +145,10 @@
 
   <!-- ===== 记录页 ===== -->
   <section id="page-log">
+    <div class="toolbar">
+      <button class="btn ghost" id="useTplBtn">📋 从模板开始</button>
+      <button class="btn ghost" id="saveTplBtn">💾 本日存为模板</button>
+    </div>
     <div class="card">
       <h2>添加动作</h2>
       <div class="field">
@@ -136,7 +175,25 @@
 
   <!-- ===== 历史页 ===== -->
   <section id="page-hist" class="hidden">
+    <div class="sel-bar">
+      <button class="btn ghost sm" id="selToggle">勾选导出</button>
+      <button class="btn sm hidden" id="selExport">导出所选</button>
+      <button class="btn ghost sm hidden" id="selCancel">取消</button>
+      <span class="scount" id="selCount"></span>
+    </div>
     <div id="histList"></div>
+  </section>
+
+  <!-- ===== 模板页 ===== -->
+  <section id="page-tpl" class="hidden">
+    <div class="card">
+      <h2>训练模板</h2>
+      <p style="font-size:13px;color:var(--sub);margin:0 0 12px">
+        把一套常练的动作存成模板，一键复制到某天的训练，再边练边打钩。
+      </p>
+      <button class="btn" id="newTplBtn">+ 新建模板</button>
+    </div>
+    <div id="tplList"></div>
   </section>
 
   <!-- ===== 数据页 ===== -->
@@ -170,9 +227,26 @@
 
 <nav class="tabbar">
   <button data-page="log" class="active"><span class="ic">📝</span>记录</button>
+  <button data-page="tpl"><span class="ic">📋</span>模板</button>
   <button data-page="hist"><span class="ic">📚</span>历史</button>
   <button data-page="data"><span class="ic">📤</span>数据</button>
 </nav>
+
+<!-- 组间休息倒计时 -->
+<div id="restBar" class="rest-bar">
+  <div class="rt-top">
+    <div>
+      <div class="rt-lbl" id="restLbl">组间休息</div>
+      <div class="rt-time" id="restTime">60</div>
+    </div>
+    <button class="btn ghost sm" id="restSkip">跳过</button>
+  </div>
+  <div class="rest-prog"><div id="restProg"></div></div>
+  <div class="rt-btns">
+    <button class="btn ghost sm" id="restMinus">-15s</button>
+    <button class="btn ghost sm" id="restPlus">+15s</button>
+  </div>
+</div>
 
 <div id="toast" class="toast"></div>
 
@@ -188,14 +262,33 @@
   </div>
 </div>
 
+<!-- 模板编辑弹窗 -->
+<div id="tplModalBg" class="modal-bg hidden">
+  <div class="modal">
+    <h3 id="tplModalTitle">新建模板</h3>
+    <div class="field">
+      <label>模板名称</label>
+      <input id="tplName" placeholder="如：胸 + 三头日" autocomplete="off">
+    </div>
+    <label>动作（动作名 · 组数 · 组间休息秒）</label>
+    <div id="tplExBox"></div>
+    <button class="add-set" id="tplAddEx">+ 增加动作</button>
+    <div class="toolbar" style="margin-top:14px">
+      <button class="btn green" id="tplSave">保存模板</button>
+      <button class="btn ghost" id="tplCancel">取消</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ========= 存储层 ========= */
 const KEY = 'fitlog_v1';
-function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || {entries:[]}; }catch(e){ return {entries:[]}; } }
+function load(){ try{ const d=JSON.parse(localStorage.getItem(KEY))||{}; if(!Array.isArray(d.entries))d.entries=[]; if(!Array.isArray(d.templates))d.templates=[]; return d; }catch(e){ return {entries:[],templates:[]}; } }
 function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
 let DB = load();
 
-/* entry: {id, date:'YYYY-MM-DD', name, sets:[{w,r,rest}], note, ts} */
+/* entry: {id, date:'YYYY-MM-DD', name, sets:[{w,r,rest,done}], note, ts} */
+/* template: {id, name, exercises:[{name, count, rest}], ts} */
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function todayStr(d){ d=d||new Date(); const z=n=>String(n).padStart(2,'0');
@@ -261,23 +354,43 @@ document.getElementById('saveExBtn').onclick=()=>{
 
 /* ========= 渲染今天 ========= */
 function fmtSet(s){ let t=`${s.w}kg×${s.r}`; if(s.rest) t+=` (休${s.rest}s)`; return t; }
-function entryCard(e){
+function entryCard(e, interactive){
   const div=document.createElement('div'); div.className='entry';
   const vol=e.sets.reduce((a,s)=>a+s.w*s.r,0);
+  const doneN=e.sets.filter(s=>s.done).length;
   div.innerHTML=`
     <div class="top">
       <div>
         <div class="name">${e.name}</div>
-        <div class="meta">${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg</div>
+        <div class="meta">${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg${interactive?` · 已完成 ${doneN}/${e.sets.length}`:''}</div>
       </div>
       <button class="btn danger sm" data-del="${e.id}">删除</button>
     </div>
-    <div class="setline">${e.sets.map(s=>`<span class="tag">${fmtSet(s)}</span>`).join('')}</div>
+    ${interactive
+      ? `<div class="sets-ck">${e.sets.map((s,i)=>`
+          <label class="setck${s.done?' done':''}" data-i="${i}">
+            <input type="checkbox" ${s.done?'checked':''}>
+            <span class="si">${i+1}</span>
+            <span class="sv">${s.w}kg × ${s.r}</span>
+            <span class="sr">${s.rest?`休 ${s.rest}s`:''}</span>
+          </label>`).join('')}</div>`
+      : `<div class="setline">${e.sets.map(s=>`<span class="tag">${fmtSet(s)}</span>`).join('')}</div>`}
     ${e.note?`<div class="note">📌 ${e.note}</div>`:''}`;
   div.querySelector('[data-del]').onclick=()=>{
     if(confirm('删除「'+e.name+'」这条记录？')){
       DB.entries=DB.entries.filter(x=>x.id!==e.id); save(DB); renderToday(); renderHist(); }
   };
+  if(interactive){
+    div.querySelectorAll('.setck').forEach(lbl=>{
+      const i=+lbl.dataset.i, cb=lbl.querySelector('input');
+      cb.onchange=()=>{
+        e.sets[i].done=cb.checked; lbl.classList.toggle('done',cb.checked); save(DB);
+        const meta=div.querySelector('.meta');
+        if(meta) meta.textContent=`${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg · 已完成 ${e.sets.filter(s=>s.done).length}/${e.sets.length}`;
+        if(cb.checked && e.sets[i].rest>0) startRest(e.sets[i].rest, `${e.name} · 第${i+1}组后`);
+      };
+    });
+  }
   return div;
 }
 function renderToday(){
@@ -288,10 +401,12 @@ function renderToday(){
   if(!list.length){ box.innerHTML='<div class="empty">这一天还没有记录，开始添加吧</div>'; tt.textContent=''; return; }
   let vol=0,sets=0; list.forEach(e=>{ sets+=e.sets.length; vol+=e.sets.reduce((a,s)=>a+s.w*s.r,0); });
   tt.textContent=`本日合计：${list.length} 个动作 · ${sets} 组 · 总容量 ${vol.toFixed(0)} kg`;
-  list.forEach(e=>box.appendChild(entryCard(e)));
+  list.forEach(e=>box.appendChild(entryCard(e, true)));
 }
 
 /* ========= 渲染历史 ========= */
+let selMode=false;
+const selDays=new Set();
 function renderHist(){
   const box=document.getElementById('histList'); box.innerHTML='';
   if(!DB.entries.length){ box.innerHTML='<div class="empty">还没有任何记录</div>'; return; }
@@ -302,27 +417,63 @@ function renderHist(){
     let vol=0,sets=0; list.forEach(e=>{ sets+=e.sets.length; vol+=e.sets.reduce((a,s)=>a+s.w*s.r,0); });
     const wrap=document.createElement('div'); wrap.className='hist-day';
     const head=document.createElement('div');
-    head.innerHTML=`<div class="d">${d} <span class="pill" style="margin-left:6px">${list.length}动作·${sets}组·${vol.toFixed(0)}kg</span></div>`;
+    head.innerHTML=`<div class="d">${selMode?`<input type="checkbox" data-d="${d}" ${selDays.has(d)?'checked':''}>`:''}<span>${d}</span> <span class="pill">${list.length}动作·${sets}组·${vol.toFixed(0)}kg</span></div>`;
+    if(selMode){
+      head.querySelector('input').onchange=ev=>{
+        if(ev.target.checked) selDays.add(d); else selDays.delete(d);
+        updateSelCount();
+      };
+    }
     wrap.appendChild(head);
     list.forEach(e=>wrap.appendChild(entryCard(e)));
     box.appendChild(wrap);
   });
 }
+function updateSelCount(){
+  document.getElementById('selCount').textContent = selMode? `已选 ${selDays.size} 天` : '';
+}
+/* 历史选择导出控制 */
+document.getElementById('selToggle').onclick=()=>{
+  selMode=true; selDays.clear();
+  document.getElementById('selToggle').classList.add('hidden');
+  document.getElementById('selExport').classList.remove('hidden');
+  document.getElementById('selCancel').classList.remove('hidden');
+  updateSelCount(); renderHist();
+};
+document.getElementById('selCancel').onclick=()=>{
+  selMode=false; selDays.clear();
+  document.getElementById('selToggle').classList.remove('hidden');
+  document.getElementById('selExport').classList.add('hidden');
+  document.getElementById('selCancel').classList.add('hidden');
+  updateSelCount(); renderHist();
+};
+document.getElementById('selExport').onclick=()=>{
+  if(!selDays.size){ toast('请先勾选要导出的训练日'); return; }
+  showModal('所选训练（点复制后粘给大模型）', toMarkdown([...selDays]));
+};
 
 /* ========= 导出 ========= */
-function toMarkdown(){
-  if(!DB.entries.length) return '（暂无数据）';
-  const byDay={}; DB.entries.forEach(e=>{ (byDay[e.date]=byDay[e.date]||[]).push(e); });
-  let md='# 健身记录\n\n';
+function toMarkdown(daysFilter){
+  let entries=DB.entries;
+  if(daysFilter && daysFilter.length) entries=entries.filter(e=>daysFilter.includes(e.date));
+  if(!entries.length) return '（暂无数据）';
+  const byDay={}; entries.forEach(e=>{ (byDay[e.date]=byDay[e.date]||[]).push(e); });
+  let md='# 健身训练记录\n\n';
   Object.keys(byDay).sort().forEach(d=>{
-    md+=`## ${d}\n\n`;
-    byDay[d].sort((a,b)=>a.ts-b.ts).forEach(e=>{
-      const sets=e.sets.map(s=>`${s.w}kg×${s.r}${s.rest?`(休${s.rest}s)`:''}`).join(', ');
-      md+=`- **${e.name}**：${sets}`;
-      if(e.note) md+=` — 备注：${e.note}`;
+    const list=byDay[d].sort((a,b)=>a.ts-b.ts);
+    let vol=0,sc=0; list.forEach(e=>{ sc+=e.sets.length; vol+=e.sets.reduce((a,s)=>a+s.w*s.r,0); });
+    md+=`## ${d}（${list.length} 个动作，${sc} 组，总容量 ${vol.toFixed(0)} kg）\n\n`;
+    list.forEach(e=>{
+      md+=`### ${e.name}\n`;
+      e.sets.forEach((s,i)=>{
+        md+=`- 第${i+1}组：${s.w} kg × ${s.r} 次`;
+        if(s.rest) md+=`，组间休息 ${s.rest}s`;
+        if(s.done) md+=`（已完成）`;
+        md+='\n';
+      });
+      if(e.note) md+=`- 备注：${e.note}\n`;
       md+='\n';
     });
-    md+='\n';
   });
   return md;
 }
@@ -362,13 +513,14 @@ document.getElementById('impFile').onchange=ev=>{
   const r=new FileReader();
   r.onload=()=>{ try{ const d=JSON.parse(r.result);
     if(!d.entries||!Array.isArray(d.entries)) throw 0;
-    if(confirm('导入将覆盖当前所有数据，确定？')){ DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); toast('导入成功'); }
+    if(!Array.isArray(d.templates)) d.templates=[];
+    if(confirm('导入将覆盖当前所有数据，确定？')){ DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); toast('导入成功'); }
   }catch(e){ toast('文件格式不正确'); } };
   r.readAsText(f); ev.target.value='';
 };
 document.getElementById('clearAll').onclick=()=>{
   if(confirm('确定清空全部健身数据？此操作不可恢复（建议先下载备份）')){
-    DB={entries:[]}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); toast('已清空'); }
+    DB={entries:[],templates:[]}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); toast('已清空'); }
 };
 
 /* ========= 统计 ========= */
@@ -391,12 +543,139 @@ document.querySelectorAll('.tabbar button').forEach(b=>{
     b.classList.add('active');
     const p=b.dataset.page;
     document.getElementById('page-log').classList.toggle('hidden',p!=='log');
+    document.getElementById('page-tpl').classList.toggle('hidden',p!=='tpl');
     document.getElementById('page-hist').classList.toggle('hidden',p!=='hist');
     document.getElementById('page-data').classList.toggle('hidden',p!=='data');
+    if(p==='tpl') renderTpl();
     if(p==='hist') renderHist();
     if(p==='data') renderStat();
   };
 });
+
+/* ========= 组间休息倒计时 ========= */
+let restTimer=null, restTotal=0, restLeft=0;
+const restBar=document.getElementById('restBar');
+function fmtTime(s){ const m=Math.floor(s/60), x=s%60; return m>0?`${m}:${String(x).padStart(2,'0')}`:String(s); }
+function paintRest(){
+  document.getElementById('restTime').textContent=fmtTime(Math.max(0,restLeft));
+  document.getElementById('restProg').style.width=(restTotal?Math.max(0,restLeft)/restTotal*100:0)+'%';
+}
+function startRest(sec, label){
+  restTotal=sec; restLeft=sec;
+  document.getElementById('restLbl').textContent=label||'组间休息';
+  restBar.classList.add('show'); paintRest();
+  clearInterval(restTimer);
+  restTimer=setInterval(()=>{
+    restLeft--; paintRest();
+    if(restLeft<=0){ stopRest(); beep(); toast('休息结束，继续下一组 💪'); }
+  },1000);
+}
+function stopRest(){ clearInterval(restTimer); restTimer=null; restBar.classList.remove('show'); }
+function beep(){
+  try{ const a=new (window.AudioContext||window.webkitAudioContext)();
+    const o=a.createOscillator(), g=a.createGain();
+    o.connect(g); g.connect(a.destination); o.type='sine'; o.frequency.value=880;
+    g.gain.setValueAtTime(.001,a.currentTime); g.gain.exponentialRampToValueAtTime(.3,a.currentTime+.02);
+    g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.5);
+    o.start(); o.stop(a.currentTime+.55);
+    if(navigator.vibrate) navigator.vibrate(200);
+  }catch(e){}
+}
+document.getElementById('restSkip').onclick=stopRest;
+document.getElementById('restPlus').onclick=()=>{ restLeft+=15; restTotal=Math.max(restTotal,restLeft); paintRest(); };
+document.getElementById('restMinus').onclick=()=>{ restLeft=Math.max(1,restLeft-15); paintRest(); };
+
+/* ========= 模板 ========= */
+let editingTplId=null;
+function renderTpl(){
+  const box=document.getElementById('tplList'); box.innerHTML='';
+  if(!DB.templates.length){ box.innerHTML='<div class="empty">还没有模板，点上面「新建模板」创建一套常练的动作</div>'; return; }
+  DB.templates.slice().sort((a,b)=>b.ts-a.ts).forEach(t=>{
+    const totalSets=t.exercises.reduce((a,x)=>a+(x.count||0),0);
+    const div=document.createElement('div'); div.className='tpl-card';
+    div.innerHTML=`
+      <div class="tname">${t.name}</div>
+      <div class="tmeta">${t.exercises.length} 个动作 · ${totalSets} 组</div>
+      <div class="tex">${t.exercises.map(x=>`${x.name}（${x.count}组${x.rest?` · 休${x.rest}s`:''}）`).join('<br>')}</div>
+      <div class="tact">
+        <button class="btn green sm" data-use>复制到当前日期</button>
+        <button class="btn ghost sm" data-edit>编辑</button>
+        <button class="btn danger sm" data-del>删除</button>
+      </div>`;
+    div.querySelector('[data-use]').onclick=()=>applyTemplate(t);
+    div.querySelector('[data-edit]').onclick=()=>openTplModal(t);
+    div.querySelector('[data-del]').onclick=()=>{
+      if(confirm('删除模板「'+t.name+'」？')){ DB.templates=DB.templates.filter(x=>x.id!==t.id); save(DB); renderTpl(); }
+    };
+    box.appendChild(div);
+  });
+}
+function applyTemplate(t){
+  const d=curDate.value;
+  t.exercises.forEach(x=>{
+    const sets=[]; for(let i=0;i<(x.count||1);i++) sets.push({w:0,r:0,rest:x.rest||0,done:false});
+    DB.entries.push({id:uid(),date:d,name:x.name,sets,note:'',ts:Date.now()+Math.floor(Math.random()*1000)});
+  });
+  save(DB); refreshSuggest();
+  document.querySelector('.tabbar button[data-page="log"]').click();
+  renderToday();
+  toast(`已把「${t.name}」复制到 ${d}`);
+}
+/* 模板编辑弹窗 */
+const tplModalBg=document.getElementById('tplModalBg'), tplExBox=document.getElementById('tplExBox');
+function tplExRow(x={name:'',count:'',rest:''}){
+  const row=document.createElement('div'); row.className='tpl-ex-row';
+  row.innerHTML=`
+    <input class="tx-name" placeholder="动作名" value="${x.name||''}" list="exList" autocomplete="off">
+    <input class="tx-count" type="number" inputmode="numeric" placeholder="组数" value="${x.count||''}" style="max-width:72px">
+    <input class="tx-rest" type="number" inputmode="numeric" placeholder="休息s" value="${x.rest||''}" style="max-width:80px">
+    <button class="x" title="删除">×</button>`;
+  row.querySelector('.x').onclick=()=>row.remove();
+  return row;
+}
+function openTplModal(t){
+  editingTplId = t? t.id : null;
+  document.getElementById('tplModalTitle').textContent = t? '编辑模板' : '新建模板';
+  document.getElementById('tplName').value = t? t.name : '';
+  tplExBox.innerHTML='';
+  const exs = t? t.exercises : [{name:'',count:3,rest:90}];
+  exs.forEach(x=>tplExBox.appendChild(tplExRow(x)));
+  tplModalBg.classList.remove('hidden');
+}
+document.getElementById('newTplBtn').onclick=()=>openTplModal(null);
+document.getElementById('tplAddEx').onclick=()=>tplExBox.appendChild(tplExRow({name:'',count:3,rest:90}));
+document.getElementById('tplCancel').onclick=()=>tplModalBg.classList.add('hidden');
+document.getElementById('tplSave').onclick=()=>{
+  const name=document.getElementById('tplName').value.trim();
+  if(!name){ toast('请填写模板名称'); return; }
+  const exercises=[...tplExBox.querySelectorAll('.tpl-ex-row')].map(r=>({
+    name:r.querySelector('.tx-name').value.trim(),
+    count:parseInt(r.querySelector('.tx-count').value)||1,
+    rest:parseInt(r.querySelector('.tx-rest').value)||0
+  })).filter(x=>x.name);
+  if(!exercises.length){ toast('至少添加一个动作'); return; }
+  if(editingTplId){
+    const t=DB.templates.find(x=>x.id===editingTplId); if(t){ t.name=name; t.exercises=exercises; }
+  } else {
+    DB.templates.push({id:uid(),name,exercises,ts:Date.now()});
+  }
+  save(DB); tplModalBg.classList.add('hidden'); renderTpl(); toast('模板已保存 ✓');
+};
+/* 记录页：本日存为模板 / 从模板开始 */
+document.getElementById('saveTplBtn').onclick=()=>{
+  const d=curDate.value;
+  const list=DB.entries.filter(e=>e.date===d).sort((a,b)=>a.ts-b.ts);
+  if(!list.length){ toast('本日还没有动作，无法存为模板'); return; }
+  const name=prompt('模板名称：', d+' 训练');
+  if(name===null) return;
+  const nm=name.trim(); if(!nm){ toast('名称不能为空'); return; }
+  const exercises=list.map(e=>({name:e.name,count:e.sets.length,rest:(e.sets.find(s=>s.rest)||{}).rest||0}));
+  DB.templates.push({id:uid(),name:nm,exercises,ts:Date.now()});
+  save(DB); toast('已存为模板 ✓');
+};
+document.getElementById('useTplBtn').onclick=()=>{
+  document.querySelector('.tabbar button[data-page="tpl"]').click();
+};
 
 /* ========= 启动 ========= */
 refreshSuggest(); renderToday();
