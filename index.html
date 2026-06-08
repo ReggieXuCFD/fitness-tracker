@@ -63,6 +63,7 @@
   .entry .meta{font-size:12px;color:var(--sub);margin-top:2px}
   .entry .setline{font-size:14px;color:var(--text);margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
   .tag{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:13px}
+  .tag.done{background:rgba(52,199,89,.14);border-color:var(--green);color:var(--green)}
   .entry .note{font-size:13px;color:var(--warn);margin-top:8px}
   .empty{text-align:center;color:var(--sub);padding:30px 10px;font-size:14px}
   .day-total{font-size:13px;color:var(--sub);margin:14px 2px 0}
@@ -455,7 +456,7 @@ function entryCard(e, interactive){
     <div class="top">
       <div>
         <div class="name">${e.name}</div>
-        <div class="meta">${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg${interactive?` · 已完成 ${doneN}/${e.sets.length}`:''}</div>
+        <div class="meta">${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg${(interactive||doneN)?` · 已完成 ${doneN}/${e.sets.length}`:''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         <button class="btn ghost sm" data-edit="${e.id}">编辑</button>
@@ -470,7 +471,7 @@ function entryCard(e, interactive){
             <span class="sv">${s.w}kg × ${s.r}</span>
             <span class="sr">${s.rest?`休 ${s.rest}s`:''}</span>
           </label>`).join('')}</div>`
-      : `<div class="setline">${e.sets.map(s=>`<span class="tag">${fmtSet(s)}</span>`).join('')}</div>`}
+      : `<div class="setline">${e.sets.map(s=>`<span class="tag${s.done?' done':''}">${s.done?'✓ ':''}${fmtSet(s)}</span>`).join('')}</div>`}
     ${e.note?`<div class="note">📌 ${e.note}</div>`:''}`;
   div.querySelector('[data-del]').onclick=()=>{
     if(confirm('删除「'+e.name+'」这条记录？')){
@@ -521,7 +522,7 @@ function renderHist(){
       };
       wrap.appendChild(sel);
     }
-    wrap.appendChild(sessionHeader(d, list));
+    wrap.appendChild(sessionHeader(d, list, {showDone:true}));
     list.forEach(e=>wrap.appendChild(entryCard(e)));
     box.appendChild(wrap);
   });
