@@ -129,6 +129,19 @@
     background:rgba(15,17,21,.92);backdrop-filter:blur(8px);padding:10px 0;border-bottom:1px solid var(--line)}
   .sel-bar .btn.sm{flex:0 0 auto}
   .sel-bar .scount{font-size:13px;color:var(--sub);margin-left:auto}
+  /* 训练卡（一天=一次训练） */
+  .sess{background:linear-gradient(135deg,#1f2530,#1a1d24);border:1px solid var(--line);
+    border-radius:var(--radius);padding:14px;margin-top:14px}
+  .sess .s-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .sess .s-title{font-size:18px;font-weight:800}
+  .sess .s-date{font-size:12px;color:var(--sub);margin-top:3px}
+  .sess .s-stat{font-size:13px;color:var(--accent);margin-top:8px}
+  .sess .s-note{font-size:13px;color:var(--warn);margin-top:8px;white-space:pre-wrap}
+  .sess .s-acts{display:flex;gap:8px;flex-wrap:wrap}
+  .hist-day .sess{margin-top:18px}
+  .ex-actions{display:flex;gap:8px;margin-top:10px}
+  .modal .set-row{grid-template-columns:30px 1fr 1fr 70px 32px}
+  .modal .set-row .idx{font-size:13px;color:var(--sub);text-align:center}
 </style>
 </head>
 <body>
@@ -280,15 +293,68 @@
   </div>
 </div>
 
+<!-- 动作编辑弹窗 -->
+<div id="exModalBg" class="modal-bg hidden">
+  <div class="modal">
+    <h3>编辑动作</h3>
+    <div class="field">
+      <label>动作名称</label>
+      <input id="edExName" list="exList" placeholder="如：杠铃卧推" autocomplete="off">
+    </div>
+    <label>组数（重量 kg × 次数 · 组间休息秒）</label>
+    <div class="sets" id="edSetsBox"></div>
+    <button class="add-set" id="edAddSet">+ 增加一组</button>
+    <div class="field" style="margin-top:12px">
+      <label>备注</label>
+      <textarea id="edExNote" placeholder="RPE / 状态 / 感受"></textarea>
+    </div>
+    <div class="toolbar" style="margin-top:14px">
+      <button class="btn green" id="edExSave">保存修改</button>
+      <button class="btn ghost" id="edExCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 训练编辑弹窗 -->
+<div id="sessModalBg" class="modal-bg hidden">
+  <div class="modal">
+    <h3>编辑这次训练</h3>
+    <div class="field">
+      <label>训练名称（如：胸 + 三头）</label>
+      <input id="edSessTitle" placeholder="给这次训练起个名" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>训练日期</label>
+      <input id="edSessDate" type="date">
+    </div>
+    <div class="field">
+      <label>整体备注</label>
+      <textarea id="edSessNote" placeholder="今天整体状态、训练目标等"></textarea>
+    </div>
+    <div class="toolbar" style="margin-top:14px">
+      <button class="btn green" id="edSessSave">保存</button>
+      <button class="btn ghost" id="edSessCancel">取消</button>
+    </div>
+    <button class="btn danger" id="edSessDelete" style="margin-top:10px">删除整次训练</button>
+  </div>
+</div>
+
 <script>
 /* ========= 存储层 ========= */
 const KEY = 'fitlog_v1';
-function load(){ try{ const d=JSON.parse(localStorage.getItem(KEY))||{}; if(!Array.isArray(d.entries))d.entries=[]; if(!Array.isArray(d.templates))d.templates=[]; return d; }catch(e){ return {entries:[],templates:[]}; } }
+function load(){ try{ const d=JSON.parse(localStorage.getItem(KEY))||{}; if(!Array.isArray(d.entries))d.entries=[]; if(!Array.isArray(d.templates))d.templates=[]; if(!d.sessions||typeof d.sessions!=='object')d.sessions={}; return d; }catch(e){ return {entries:[],templates:[],sessions:{}}; } }
 function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
 let DB = load();
 
 /* entry: {id, date:'YYYY-MM-DD', name, sets:[{w,r,rest,done}], note, ts} */
 /* template: {id, name, exercises:[{name, count, rest}], ts} */
+/* sessions: { 'YYYY-MM-DD': {title, note} }  —— 一天即一次训练的元信息 */
+function getSession(date){ return DB.sessions[date] || {title:'',note:''}; }
+function setSession(date, obj){
+  const cur=getSession(date); const next={...cur,...obj};
+  if(!next.title && !next.note) delete DB.sessions[date];
+  else DB.sessions[date]=next;
+}
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function todayStr(d){ d=d||new Date(); const z=n=>String(n).padStart(2,'0');
@@ -356,6 +422,29 @@ document.getElementById('saveExBtn').onclick=()=>{
   toast('已保存 ✓');
 };
 
+/* ========= 一次训练（按天）卡片 ========= */
+function sessionStat(list){
+  let vol=0,sets=0,doneSets=0;
+  list.forEach(e=>{ sets+=e.sets.length; vol+=e.sets.reduce((a,s)=>a+s.w*s.r,0); doneSets+=e.sets.filter(s=>s.done).length; });
+  return {vol,sets,doneSets};
+}
+function sessionHeader(date, list, opts={}){
+  const s=getSession(date); const st=sessionStat(list);
+  const head=document.createElement('div'); head.className='sess';
+  head.innerHTML=`
+    <div class="s-top">
+      <div>
+        <div class="s-title">${s.title? s.title : '一次训练'}</div>
+        <div class="s-date">📅 ${date}</div>
+      </div>
+      <button class="btn ghost sm" data-sedit>编辑训练</button>
+    </div>
+    <div class="s-stat">${list.length} 个动作 · ${st.sets} 组 · 容量 ${st.vol.toFixed(0)} kg${opts.showDone?` · 已完成 ${st.doneSets}/${st.sets} 组`:''}</div>
+    ${s.note?`<div class="s-note">📝 ${s.note}</div>`:''}`;
+  head.querySelector('[data-sedit]').onclick=()=>openSessModal(date);
+  return head;
+}
+
 /* ========= 渲染今天 ========= */
 function fmtSet(s){ let t=`${s.w}kg×${s.r}`; if(s.rest) t+=` (休${s.rest}s)`; return t; }
 function entryCard(e, interactive){
@@ -368,7 +457,10 @@ function entryCard(e, interactive){
         <div class="name">${e.name}</div>
         <div class="meta">${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg${interactive?` · 已完成 ${doneN}/${e.sets.length}`:''}</div>
       </div>
-      <button class="btn danger sm" data-del="${e.id}">删除</button>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn ghost sm" data-edit="${e.id}">编辑</button>
+        <button class="btn danger sm" data-del="${e.id}">删除</button>
+      </div>
     </div>
     ${interactive
       ? `<div class="sets-ck">${e.sets.map((s,i)=>`
@@ -384,6 +476,7 @@ function entryCard(e, interactive){
     if(confirm('删除「'+e.name+'」这条记录？')){
       DB.entries=DB.entries.filter(x=>x.id!==e.id); save(DB); renderToday(); renderHist(); }
   };
+  div.querySelector('[data-edit]').onclick=()=>openExModal(e.id);
   if(interactive){
     div.querySelectorAll('.setck').forEach(lbl=>{
       const i=+lbl.dataset.i, cb=lbl.querySelector('input');
@@ -403,8 +496,8 @@ function renderToday(){
   const box=document.getElementById('todayList'); box.innerHTML='';
   const tt=document.getElementById('dayTotal');
   if(!list.length){ box.innerHTML='<div class="empty">这一天还没有记录，开始添加吧</div>'; tt.textContent=''; return; }
-  let vol=0,sets=0; list.forEach(e=>{ sets+=e.sets.length; vol+=e.sets.reduce((a,s)=>a+s.w*s.r,0); });
-  tt.textContent=`本日合计：${list.length} 个动作 · ${sets} 组 · 总容量 ${vol.toFixed(0)} kg`;
+  tt.textContent='';
+  box.appendChild(sessionHeader(d, list, {showDone:true}));
   list.forEach(e=>box.appendChild(entryCard(e, true)));
 }
 
@@ -418,17 +511,17 @@ function renderHist(){
   DB.entries.forEach(e=>{ (byDay[e.date]=byDay[e.date]||[]).push(e); });
   Object.keys(byDay).sort().reverse().forEach(d=>{
     const list=byDay[d].sort((a,b)=>a.ts-b.ts);
-    let vol=0,sets=0; list.forEach(e=>{ sets+=e.sets.length; vol+=e.sets.reduce((a,s)=>a+s.w*s.r,0); });
     const wrap=document.createElement('div'); wrap.className='hist-day';
-    const head=document.createElement('div');
-    head.innerHTML=`<div class="d">${selMode?`<input type="checkbox" data-d="${d}" ${selDays.has(d)?'checked':''}>`:''}<span>${d}</span> <span class="pill">${list.length}动作·${sets}组·${vol.toFixed(0)}kg</span></div>`;
     if(selMode){
-      head.querySelector('input').onchange=ev=>{
+      const sel=document.createElement('div'); sel.className='d';
+      sel.innerHTML=`<input type="checkbox" data-d="${d}" ${selDays.has(d)?'checked':''}><span>${d} 这次训练</span>`;
+      sel.querySelector('input').onchange=ev=>{
         if(ev.target.checked) selDays.add(d); else selDays.delete(d);
         updateSelCount();
       };
+      wrap.appendChild(sel);
     }
-    wrap.appendChild(head);
+    wrap.appendChild(sessionHeader(d, list));
     list.forEach(e=>wrap.appendChild(entryCard(e)));
     box.appendChild(wrap);
   });
@@ -466,7 +559,12 @@ function toMarkdown(daysFilter){
   Object.keys(byDay).sort().forEach(d=>{
     const list=byDay[d].sort((a,b)=>a.ts-b.ts);
     let vol=0,sc=0; list.forEach(e=>{ sc+=e.sets.length; vol+=e.sets.reduce((a,s)=>a+s.w*s.r,0); });
-    md+=`## ${d}（${list.length} 个动作，${sc} 组，总容量 ${vol.toFixed(0)} kg）\n\n`;
+    const s=getSession(d);
+    const title=s.title? `${s.title}（${d}）` : d;
+    md+=`## ${title}\n\n`;
+    md+=`> ${list.length} 个动作，${sc} 组，总容量 ${vol.toFixed(0)} kg\n`;
+    if(s.note) md+=`> 整体备注：${s.note}\n`;
+    md+='\n';
     list.forEach(e=>{
       md+=`### ${e.name}\n`;
       e.sets.forEach((s,i)=>{
@@ -518,13 +616,14 @@ document.getElementById('impFile').onchange=ev=>{
   r.onload=()=>{ try{ const d=JSON.parse(r.result);
     if(!d.entries||!Array.isArray(d.entries)) throw 0;
     if(!Array.isArray(d.templates)) d.templates=[];
+    if(!d.sessions||typeof d.sessions!=='object') d.sessions={};
     if(confirm('导入将覆盖当前所有数据，确定？')){ DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); toast('导入成功'); }
   }catch(e){ toast('文件格式不正确'); } };
   r.readAsText(f); ev.target.value='';
 };
 document.getElementById('clearAll').onclick=()=>{
   if(confirm('确定清空全部健身数据？此操作不可恢复（建议先下载备份）')){
-    DB={entries:[],templates:[]}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); toast('已清空'); }
+    DB={entries:[],templates:[],sessions:{}}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); toast('已清空'); }
 };
 
 /* ========= 统计 ========= */
@@ -679,6 +778,95 @@ document.getElementById('saveTplBtn').onclick=()=>{
 };
 document.getElementById('useTplBtn').onclick=()=>{
   document.querySelector('.tabbar button[data-page="tpl"]').click();
+};
+
+/* ========= 编辑动作 ========= */
+let editingExId=null;
+const exModalBg=document.getElementById('exModalBg'), edSetsBox=document.getElementById('edSetsBox');
+function edSetRow(s={w:'',r:'',rest:''}, idx=0){
+  const div=document.createElement('div'); div.className='set-row';
+  div.innerHTML=`
+    <span class="idx">${idx+1}</span>
+    <input class="w" type="number" inputmode="decimal" placeholder="kg" value="${s.w}">
+    <input class="r" type="number" inputmode="numeric" placeholder="次" value="${s.r}">
+    <input class="rest" type="number" inputmode="numeric" placeholder="休息s" value="${s.rest}">
+    <button class="x" title="删除">×</button>`;
+  div.querySelector('.x').onclick=()=>{ div.remove();
+    [...edSetsBox.querySelectorAll('.idx')].forEach((el,i)=>el.textContent=i+1); };
+  return div;
+}
+function openExModal(id){
+  const e=DB.entries.find(x=>x.id===id); if(!e) return;
+  editingExId=id;
+  document.getElementById('edExName').value=e.name;
+  document.getElementById('edExNote').value=e.note||'';
+  edSetsBox.innerHTML='';
+  e.sets.forEach((s,i)=>edSetsBox.appendChild(edSetRow({w:s.w,r:s.r,rest:s.rest||''},i)));
+  if(!e.sets.length) edSetsBox.appendChild(edSetRow({},0));
+  exModalBg.classList.remove('hidden');
+}
+document.getElementById('edAddSet').onclick=()=>{
+  const rows=edSetsBox.children; const n=rows.length;
+  let prev={w:'',r:'',rest:''};
+  if(n){ const last=rows[n-1];
+    prev={ w:last.querySelector('.w').value, r:last.querySelector('.r').value, rest:last.querySelector('.rest').value }; }
+  edSetsBox.appendChild(edSetRow(prev,n));
+};
+document.getElementById('edExCancel').onclick=()=>exModalBg.classList.add('hidden');
+document.getElementById('edExSave').onclick=()=>{
+  const e=DB.entries.find(x=>x.id===editingExId); if(!e) return;
+  const name=document.getElementById('edExName').value.trim();
+  if(!name){ toast('请填写动作名称'); return; }
+  const sets=[...edSetsBox.querySelectorAll('.set-row')].map((row,i)=>({
+    w: parseFloat(row.querySelector('.w').value)||0,
+    r: parseInt(row.querySelector('.r').value)||0,
+    rest: parseInt(row.querySelector('.rest').value)||0,
+    done: e.sets[i]?e.sets[i].done:false
+  })).filter(s=>s.w||s.r);
+  if(!sets.length){ toast('至少填写一组重量或次数'); return; }
+  e.name=name; e.sets=sets; e.note=document.getElementById('edExNote').value.trim();
+  save(DB); exModalBg.classList.add('hidden'); refreshSuggest(); renderToday(); renderHist();
+  toast('已修改 ✓');
+};
+
+/* ========= 编辑整次训练 ========= */
+let editingSessDate=null;
+const sessModalBg=document.getElementById('sessModalBg');
+function openSessModal(date){
+  editingSessDate=date; const s=getSession(date);
+  document.getElementById('edSessTitle').value=s.title||'';
+  document.getElementById('edSessDate').value=date;
+  document.getElementById('edSessNote').value=s.note||'';
+  sessModalBg.classList.remove('hidden');
+}
+document.getElementById('edSessCancel').onclick=()=>sessModalBg.classList.add('hidden');
+document.getElementById('edSessSave').onclick=()=>{
+  const oldDate=editingSessDate;
+  const title=document.getElementById('edSessTitle').value.trim();
+  const note=document.getElementById('edSessNote').value.trim();
+  const newDate=document.getElementById('edSessDate').value||oldDate;
+  if(newDate!==oldDate){
+    // 把这天所有动作迁移到新日期
+    DB.entries.forEach(e=>{ if(e.date===oldDate) e.date=newDate; });
+    const old=DB.sessions[oldDate]; if(old){ delete DB.sessions[oldDate]; }
+  }
+  // 写入新日期的元信息（先清旧再设）
+  DB.sessions[newDate]={title,note};
+  if(!title && !note) delete DB.sessions[newDate];
+  save(DB);
+  sessModalBg.classList.add('hidden');
+  if(newDate!==oldDate) curDate.value=newDate;
+  renderToday(); renderHist();
+  toast('训练已更新 ✓');
+};
+document.getElementById('edSessDelete').onclick=()=>{
+  const d=editingSessDate;
+  const n=DB.entries.filter(e=>e.date===d).length;
+  if(!confirm(`删除 ${d} 这次训练？将移除该天全部 ${n} 个动作，且不可恢复。`)) return;
+  DB.entries=DB.entries.filter(e=>e.date!==d);
+  delete DB.sessions[d];
+  save(DB); sessModalBg.classList.add('hidden');
+  renderToday(); renderHist(); toast('已删除整次训练');
 };
 
 /* ========= 启动 ========= */
