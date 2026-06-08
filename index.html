@@ -319,7 +319,11 @@ function reindexSets(){ [...document.querySelectorAll('#setsBox .set-row .idx')]
 const setsBox=document.getElementById('setsBox');
 function resetSets(){ setsBox.innerHTML=''; setsBox.appendChild(setRow({w:'',r:'',rest:''},0)); }
 document.getElementById('addSetBtn').onclick=()=>{
-  const n=setsBox.children.length; setsBox.appendChild(setRow({w:'',r:'',rest:''},n)); };
+  const rows=setsBox.children; const n=rows.length;
+  let prev={w:'',r:'',rest:''};
+  if(n){ const last=rows[n-1];
+    prev={ w:last.querySelector('.w').value, r:last.querySelector('.r').value, rest:last.querySelector('.rest').value }; }
+  setsBox.appendChild(setRow(prev,n)); };
 resetSets();
 
 /* 常用动作建议 */
