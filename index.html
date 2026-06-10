@@ -616,24 +616,38 @@ document.querySelectorAll('.tabbar button').forEach(b=>{
 });
 
 /* ========= 组间休息倒计时 ========= */
-let restTimer=null, restTotal=0, restLeft=0;
+let restTimer=null, restTotal=0, restLeft=0, restEnd=0, notifyAsked=false;
 const restBar=document.getElementById('restBar');
 function fmtTime(s){ const m=Math.floor(s/60), x=s%60; return m>0?`${m}:${String(x).padStart(2,'0')}`:String(s); }
 function paintRest(){
   document.getElementById('restTime').textContent=fmtTime(Math.max(0,restLeft));
   document.getElementById('restProg').style.width=(restTotal?Math.max(0,restLeft)/restTotal*100:0)+'%';
 }
+/* 基于结束时间戳计算剩余，后台冻结后回前台也能算准 */
+function tickRest(){
+  restLeft=Math.round((restEnd-Date.now())/1000);
+  paintRest();
+  if(restLeft<=0){ restDone(); }
+}
+function restDone(){
+  stopRest(); beep(); toast('休息结束，继续下一组 💪');
+  if(document.hidden && 'Notification' in window && Notification.permission==='granted'){
+    try{ new Notification('休息结束 💪', {body:document.getElementById('restLbl').textContent, tag:'fitlog-rest', renotify:true}); }catch(e){}
+  }
+}
 function startRest(sec, label){
-  restTotal=sec; restLeft=sec;
+  restTotal=sec; restLeft=sec; restEnd=Date.now()+sec*1000;
   document.getElementById('restLbl').textContent=label||'组间休息';
   restBar.classList.add('show'); paintRest();
+  if(!notifyAsked && 'Notification' in window && Notification.permission==='default'){
+    notifyAsked=true; try{ Notification.requestPermission(); }catch(e){}
+  }
   clearInterval(restTimer);
-  restTimer=setInterval(()=>{
-    restLeft--; paintRest();
-    if(restLeft<=0){ stopRest(); beep(); toast('休息结束，继续下一组 💪'); }
-  },1000);
+  restTimer=setInterval(tickRest,1000);
 }
-function stopRest(){ clearInterval(restTimer); restTimer=null; restBar.classList.remove('show'); }
+function stopRest(){ clearInterval(restTimer); restTimer=null; restEnd=0; restBar.classList.remove('show'); }
+/* 回到前台时立即校正（后台定时器被冻结/节流的兜底） */
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && restTimer) tickRest(); });
 function beep(){
   try{ const a=new (window.AudioContext||window.webkitAudioContext)();
     const o=a.createOscillator(), g=a.createGain();
@@ -645,8 +659,8 @@ function beep(){
   }catch(e){}
 }
 document.getElementById('restSkip').onclick=stopRest;
-document.getElementById('restPlus').onclick=()=>{ restLeft+=15; restTotal=Math.max(restTotal,restLeft); paintRest(); };
-document.getElementById('restMinus').onclick=()=>{ restLeft=Math.max(1,restLeft-15); paintRest(); };
+document.getElementById('restPlus').onclick=()=>{ restEnd+=15000; restLeft+=15; restTotal=Math.max(restTotal,restLeft); paintRest(); };
+document.getElementById('restMinus').onclick=()=>{ const nl=Math.max(1,restLeft-15); restEnd-=(restLeft-nl)*1000; restLeft=nl; paintRest(); };
 /* 休息浮窗：拖动移动 */
 (function(){
   const grip=document.getElementById('restGrip');
