@@ -17,7 +17,6 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
     font-size:16px;line-height:1.4;-webkit-text-size-adjust:100%}
   .app{max-width:640px;margin:0 auto;padding:0 14px 96px}
-  body.resting .app{padding-bottom:230px}
   header{position:sticky;top:0;z-index:20;background:rgba(15,17,21,.92);
     backdrop-filter:blur(8px);padding:14px 0 10px;border-bottom:1px solid var(--line)}
   .h-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -110,17 +109,18 @@
   .setck .sv{font-size:15px;font-weight:600}
   .setck .sr{font-size:12px;color:var(--sub);margin-left:auto}
   .setck.done .sv{color:var(--green);text-decoration:line-through;opacity:.7}
-  /* 组间休息倒计时条 */
-  .rest-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;width:min(92%,612px);
-    background:var(--card);border:1px solid var(--accent);border-radius:14px;padding:12px 14px;
-    z-index:60;box-shadow:0 8px 30px rgba(0,0,0,.5);display:none}
+  /* 组间休息倒计时条（紧凑可拖动小浮窗） */
+  .rest-bar{position:fixed;right:12px;bottom:80px;left:auto;width:210px;
+    background:var(--card);border:1px solid var(--accent);border-radius:14px;padding:10px 12px;
+    z-index:40;box-shadow:0 8px 30px rgba(0,0,0,.5);display:none;touch-action:none}
   .rest-bar.show{display:block}
-  .rest-bar .rt-top{display:flex;align-items:center;justify-content:space-between}
-  .rest-bar .rt-time{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent)}
-  .rest-bar .rt-lbl{font-size:13px;color:var(--sub)}
-  .rest-bar .rt-btns{display:flex;gap:8px;margin-top:10px}
-  .rest-bar .rt-btns .btn{padding:9px}
-  .rest-prog{height:5px;background:var(--card2);border-radius:999px;margin-top:10px;overflow:hidden}
+  .rest-bar .rt-grip{display:flex;align-items:baseline;justify-content:space-between;gap:8px;cursor:grab}
+  .rest-bar .rt-grip:active{cursor:grabbing}
+  .rest-bar .rt-time{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent)}
+  .rest-bar .rt-lbl{font-size:12px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px}
+  .rest-bar .rt-btns{display:flex;gap:6px;margin-top:8px}
+  .rest-bar .rt-btns .btn{padding:6px;flex:1;font-size:12px}
+  .rest-prog{height:4px;background:var(--card2);border-radius:999px;margin-top:8px;overflow:hidden}
   .rest-prog>div{height:100%;background:var(--accent);width:100%;transition:width .25s linear}
   /* 模板 */
   .tpl-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-top:14px}
@@ -240,17 +240,15 @@
 
 <!-- 组间休息倒计时 -->
 <div id="restBar" class="rest-bar">
-  <div class="rt-top">
-    <div>
-      <div class="rt-lbl" id="restLbl">组间休息</div>
-      <div class="rt-time" id="restTime">60</div>
-    </div>
-    <button class="btn ghost sm" id="restSkip">跳过</button>
+  <div class="rt-grip" id="restGrip" title="拖动移动">
+    <span class="rt-lbl" id="restLbl">组间休息</span>
+    <span class="rt-time" id="restTime">60</span>
   </div>
   <div class="rest-prog"><div id="restProg"></div></div>
   <div class="rt-btns">
     <button class="btn ghost sm" id="restMinus">-15s</button>
     <button class="btn ghost sm" id="restPlus">+15s</button>
+    <button class="btn ghost sm" id="restSkip">跳过</button>
   </div>
 </div>
 
@@ -628,14 +626,14 @@ function paintRest(){
 function startRest(sec, label){
   restTotal=sec; restLeft=sec;
   document.getElementById('restLbl').textContent=label||'组间休息';
-  restBar.classList.add('show'); document.body.classList.add('resting'); paintRest();
+  restBar.classList.add('show'); paintRest();
   clearInterval(restTimer);
   restTimer=setInterval(()=>{
     restLeft--; paintRest();
     if(restLeft<=0){ stopRest(); beep(); toast('休息结束，继续下一组 💪'); }
   },1000);
 }
-function stopRest(){ clearInterval(restTimer); restTimer=null; restBar.classList.remove('show'); document.body.classList.remove('resting'); }
+function stopRest(){ clearInterval(restTimer); restTimer=null; restBar.classList.remove('show'); }
 function beep(){
   try{ const a=new (window.AudioContext||window.webkitAudioContext)();
     const o=a.createOscillator(), g=a.createGain();
@@ -649,6 +647,32 @@ function beep(){
 document.getElementById('restSkip').onclick=stopRest;
 document.getElementById('restPlus').onclick=()=>{ restLeft+=15; restTotal=Math.max(restTotal,restLeft); paintRest(); };
 document.getElementById('restMinus').onclick=()=>{ restLeft=Math.max(1,restLeft-15); paintRest(); };
+/* 休息浮窗：拖动移动 */
+(function(){
+  const grip=document.getElementById('restGrip');
+  let dragging=false, sx=0, sy=0, ox=0, oy=0;
+  function clamp(){
+    const r=restBar.getBoundingClientRect();
+    let x=parseFloat(restBar.style.left), y=parseFloat(restBar.style.top);
+    x=Math.min(Math.max(4,x), innerWidth-r.width-4);
+    y=Math.min(Math.max(4,y), innerHeight-r.height-4);
+    restBar.style.left=x+'px'; restBar.style.top=y+'px';
+  }
+  grip.addEventListener('pointerdown',e=>{
+    const r=restBar.getBoundingClientRect();
+    // 切换为基于 left/top 的绝对定位，便于拖动
+    restBar.style.left=r.left+'px'; restBar.style.top=r.top+'px';
+    restBar.style.right='auto'; restBar.style.bottom='auto';
+    dragging=true; sx=e.clientX; sy=e.clientY; ox=r.left; oy=r.top;
+    grip.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  grip.addEventListener('pointermove',e=>{
+    if(!dragging) return;
+    restBar.style.left=(ox+e.clientX-sx)+'px';
+    restBar.style.top=(oy+e.clientY-sy)+'px';
+  });
+  grip.addEventListener('pointerup',e=>{ if(!dragging) return; dragging=false; clamp(); });
+})();
 
 /* ========= 模板 ========= */
 let editingTplId=null;
