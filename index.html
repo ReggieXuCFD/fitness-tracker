@@ -38,6 +38,8 @@
   .g3{grid-template-columns:1fr 1fr 1fr}
   .g2{grid-template-columns:1fr 1fr}
   .field{margin-bottom:12px}
+  .sync-auto{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--sub);cursor:pointer}
+  .sync-auto input{width:18px;height:18px}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
     border:none;border-radius:10px;font-size:15px;font-weight:600;padding:12px 14px;
     background:var(--accent);color:#fff;width:100%;cursor:pointer}
@@ -217,6 +219,27 @@
       </div>
     </div>
     <div class="card">
+      <h2>☁️ 云同步（GitHub Gist）</h2>
+      <p style="font-size:13px;color:var(--sub);margin:0 0 12px">
+        填入一个 GitHub Token，数据会存到你的私有 Gist，手机和电脑都用同一个 Token 即可同步。
+        <a href="https://github.com/settings/tokens/new?scopes=gist&description=fitness-tracker" target="_blank" style="color:var(--accent)">点此创建 Token</a>（勾选 gist 权限即可）。
+      </p>
+      <div class="field">
+        <label>GitHub Token</label>
+        <input id="syncToken" type="password" placeholder="ghp_... 或 github_pat_..." autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Gist ID（首次上传后自动生成，另一台设备填同一个）</label>
+        <input id="syncGist" placeholder="留空：首次上传会自动创建" autocomplete="off">
+      </div>
+      <label class="sync-auto"><input type="checkbox" id="syncAuto"> 自动同步（启动时下载，改动后自动上传）</label>
+      <div class="toolbar" style="margin-top:12px">
+        <button class="btn" id="syncUp">⬆️ 上传到云端</button>
+        <button class="btn ghost" id="syncDown">⬇️ 从云端下载</button>
+      </div>
+      <div id="syncStatus" style="font-size:12px;color:var(--sub);margin-top:10px"></div>
+    </div>
+    <div class="card">
       <h2>导入 / 恢复</h2>
       <p style="font-size:13px;color:var(--sub);margin:0 0 12px">
         选择之前下载的 JSON 备份文件即可恢复（会覆盖当前数据）。
@@ -334,7 +357,7 @@
 /* ========= 存储层 ========= */
 const KEY = 'fitlog_v1';
 function load(){ try{ const d=JSON.parse(localStorage.getItem(KEY))||{}; if(!Array.isArray(d.entries))d.entries=[]; if(!Array.isArray(d.templates))d.templates=[]; if(!d.sessions||typeof d.sessions!=='object')d.sessions={}; return d; }catch(e){ return {entries:[],templates:[],sessions:{}}; } }
-function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
+function save(db){ db.updatedAt=Date.now(); localStorage.setItem(KEY, JSON.stringify(db)); scheduleAutoSync(); }
 let DB = load();
 
 /* entry: {id, date:'YYYY-MM-DD', name, sets:[{w,r,rest,done}], note, ts} */
@@ -585,6 +608,83 @@ document.getElementById('clearAll').onclick=()=>{
   if(confirm('确定清空全部健身数据？此操作不可恢复（建议先下载备份）')){
     DB={entries:[],templates:[],sessions:{}}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); toast('已清空'); }
 };
+
+/* ========= 云同步（GitHub Gist） ========= */
+const SYNC_KEY='fitlog_sync';
+const GIST_FILE='fitlog.json';
+function loadSync(){ try{ return JSON.parse(localStorage.getItem(SYNC_KEY))||{}; }catch(e){ return {}; } }
+function saveSync(s){ localStorage.setItem(SYNC_KEY, JSON.stringify(s)); }
+let SYNC=loadSync();  // {token, gistId, auto}
+let autoSyncTimer=null, syncing=false;
+function setSyncStatus(msg, ok){ const el=document.getElementById('syncStatus'); if(el){ el.textContent=msg||''; el.style.color = ok===false?'var(--danger,#e66)':(ok===true?'var(--accent)':'var(--sub)'); } }
+function renderAll(){ refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); }
+
+async function gistRequest(method, path, body){
+  const res=await fetch('https://api.github.com'+path,{
+    method, headers:{ 'Authorization':'Bearer '+SYNC.token, 'Accept':'application/vnd.github+json' },
+    body: body?JSON.stringify(body):undefined
+  });
+  if(!res.ok){ const t=await res.text().catch(()=>''); throw new Error('GitHub '+res.status+' '+t.slice(0,120)); }
+  return res.json();
+}
+async function syncUpload(silent){
+  if(syncing) return; const s=loadSync();
+  if(!s.token){ if(!silent) toast('请先填写 GitHub Token'); return; }
+  SYNC=s; syncing=true; setSyncStatus('上传中…');
+  try{
+    const content=JSON.stringify(DB);
+    const payload={ description:'fitness-tracker data', files:{ [GIST_FILE]:{ content } } };
+    let r;
+    if(SYNC.gistId){ r=await gistRequest('PATCH','/gists/'+SYNC.gistId, payload); }
+    else { payload.public=false; r=await gistRequest('POST','/gists', payload); SYNC.gistId=r.id; document.getElementById('syncGist').value=r.id; saveSync(SYNC); }
+    setSyncStatus('已上传 · '+new Date().toLocaleString(), true);
+    if(!silent) toast('已上传到云端');
+  }catch(e){ setSyncStatus('上传失败：'+e.message, false); if(!silent) toast('上传失败'); }
+  finally{ syncing=false; }
+}
+async function syncDownload(silent){
+  if(syncing) return; const s=loadSync();
+  if(!s.token){ if(!silent) toast('请先填写 GitHub Token'); return; }
+  if(!s.gistId){ if(!silent) toast('请先填写 Gist ID，或先上传一次'); return; }
+  SYNC=s; syncing=true; setSyncStatus('下载中…');
+  try{
+    const r=await gistRequest('GET','/gists/'+SYNC.gistId);
+    const file=r.files&&r.files[GIST_FILE];
+    if(!file) throw new Error('Gist 中没有数据文件');
+    let content=file.content;
+    if(file.truncated && file.raw_url){ content=await (await fetch(file.raw_url)).text(); }
+    const remote=JSON.parse(content);
+    if(!remote||!Array.isArray(remote.entries)) throw new Error('云端数据格式不正确');
+    if(!Array.isArray(remote.templates)) remote.templates=[];
+    if(!remote.sessions||typeof remote.sessions!=='object') remote.sessions={};
+    if(silent){
+      // 自动同步：仅当云端较新才覆盖本地
+      if((remote.updatedAt||0) > (DB.updatedAt||0)){ DB=remote; localStorage.setItem(KEY, JSON.stringify(DB)); renderAll(); setSyncStatus('已从云端更新 · '+new Date().toLocaleString(), true); }
+      else setSyncStatus('本地已是最新 · '+new Date().toLocaleString(), true);
+    } else {
+      if(!confirm('从云端下载将覆盖本机当前数据，确定？')){ syncing=false; setSyncStatus(''); return; }
+      DB=remote; localStorage.setItem(KEY, JSON.stringify(DB)); renderAll();
+      setSyncStatus('已从云端下载 · '+new Date().toLocaleString(), true); toast('已从云端下载');
+    }
+  }catch(e){ setSyncStatus('下载失败：'+e.message, false); if(!silent) toast('下载失败'); }
+  finally{ syncing=false; }
+}
+function scheduleAutoSync(){
+  const s=loadSync(); if(!s.auto||!s.token) return;
+  clearTimeout(autoSyncTimer);
+  autoSyncTimer=setTimeout(()=>syncUpload(true), 2500);
+}
+// UI 绑定
+(function(){
+  const tk=document.getElementById('syncToken'), gi=document.getElementById('syncGist'), au=document.getElementById('syncAuto');
+  tk.value=SYNC.token||''; gi.value=SYNC.gistId||''; au.checked=!!SYNC.auto;
+  function persist(){ SYNC={ token:tk.value.trim(), gistId:gi.value.trim(), auto:au.checked }; saveSync(SYNC); }
+  tk.onchange=persist; gi.onchange=persist; au.onchange=()=>{ persist(); if(au.checked) syncDownload(true); };
+  document.getElementById('syncUp').onclick=()=>{ persist(); syncUpload(false); };
+  document.getElementById('syncDown').onclick=()=>{ persist(); syncDownload(false); };
+})();
+// 启动时若开启自动同步则拉取云端
+if(SYNC.auto && SYNC.token && SYNC.gistId){ syncDownload(true); }
 
 /* ========= 统计 ========= */
 function renderStat(){
