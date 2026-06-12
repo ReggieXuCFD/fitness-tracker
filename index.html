@@ -155,6 +155,41 @@
   .ex-actions{display:flex;gap:8px;margin-top:10px}
   .modal .set-row{grid-template-columns:30px 1fr 1fr 70px 32px}
   .modal .set-row .idx{font-size:13px;color:var(--sub);text-align:center}
+  /* 饮食 */
+  .diet-sum{background:linear-gradient(135deg,#1f2530,#1a1d24);border:1px solid var(--line);
+    border-radius:var(--radius);padding:16px;margin-top:14px}
+  .diet-sum .ds-kcal{font-size:32px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums}
+  .diet-sum .ds-kcal small{font-size:14px;color:var(--sub);font-weight:600;margin-left:6px}
+  .diet-sum .ds-macros{display:flex;gap:10px;margin-top:12px}
+  .diet-sum .ds-m{flex:1;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
+  .diet-sum .ds-m .v{font-size:18px;font-weight:700}
+  .diet-sum .ds-m .l{font-size:11px;color:var(--sub);margin-top:2px}
+  .diet-sum .ds-m.p .v{color:#4f9cf9} .diet-sum .ds-m.f .v{color:#f5a623} .diet-sum .ds-m.c .v{color:#36c275}
+  .meal-grp{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-top:12px}
+  .meal-grp .mg-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--sub);margin-bottom:6px}
+  .meal-grp .mg-slot{font-weight:700;color:var(--accent);font-size:15px}
+  .meal-item{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+  .meal-item .mi-name{flex:1;font-size:15px}
+  .meal-item .mi-sub{font-size:12px;color:var(--sub);margin-top:2px}
+  .meal-item .mi-kcal{font-size:14px;font-weight:700;color:var(--green);white-space:nowrap}
+  .meal-item .x{font-size:20px}
+  .food-cats{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+  .food-cats .fc{font-size:12px;color:var(--sub);background:var(--card2);border:1px solid var(--line);
+    border-radius:999px;padding:5px 11px;cursor:pointer}
+  .food-cats .fc.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .food-results{max-height:34vh;overflow:auto;margin-bottom:6px}
+  .food-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 10px;
+    border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;background:var(--card2)}
+  .food-row:active{transform:scale(.99)}
+  .food-row .fr-name{font-size:15px;font-weight:600}
+  .food-row .fr-meta{font-size:12px;color:var(--sub);margin-top:2px}
+  .food-row .fr-tag{font-size:11px;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:2px 6px;white-space:nowrap}
+  .portion-box{border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
+  .portion-box .pb-name{font-size:17px;font-weight:700}
+  .portion-box .pb-per100{font-size:12px;color:var(--sub);margin:4px 0 10px}
+  .portion-box .pb-result{margin-top:12px;background:var(--card2);border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.7}
+  .portion-box .pb-result b{color:var(--green)}
 </style>
 </head>
 <body>
@@ -252,11 +287,21 @@
       <button class="btn danger" id="clearAll" style="margin-top:14px">清空全部数据</button>
     </div>
   </section>
+
+  <!-- ===== 饮食页 ===== -->
+  <section id="page-diet" class="hidden">
+    <div id="dietSummary"></div>
+    <div id="dietList"></div>
+    <div class="log-actions">
+      <button class="btn green" id="addMealBtn">＋ 添加饮食</button>
+    </div>
+  </section>
 </div>
 
 <nav class="tabbar">
   <button data-page="log" class="active"><span class="ic">📝</span>记录</button>
   <button data-page="tpl"><span class="ic">📋</span>模板</button>
+  <button data-page="diet"><span class="ic">🍱</span>饮食</button>
   <button data-page="hist"><span class="ic">📚</span>历史</button>
   <button data-page="data"><span class="ic">📤</span>数据</button>
 </nav>
@@ -353,16 +398,85 @@
   </div>
 </div>
 
+<!-- 添加饮食弹窗 -->
+<div id="mealModalBg" class="modal-bg hidden">
+  <div class="modal">
+    <h3 id="mealModalTitle">添加饮食</h3>
+    <div class="field">
+      <label>这一餐</label>
+      <div class="seg" id="mealSlotSeg">
+        <button data-slot="早餐">早餐</button>
+        <button data-slot="午餐" class="active">午餐</button>
+        <button data-slot="晚餐">晚餐</button>
+        <button data-slot="加餐">加餐</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>搜索食物 / 菜（食堂成品菜直接搜菜名）</label>
+      <input id="foodSearch" placeholder="如：米饭、西红柿炒鸡蛋、鸡胸肉…" autocomplete="off">
+    </div>
+    <div id="foodCats" class="food-cats"></div>
+    <div id="foodResults" class="food-results"></div>
+
+    <!-- 选中食物后填份量 -->
+    <div id="portionBox" class="portion-box hidden">
+      <div class="pb-name" id="pbName"></div>
+      <div class="pb-per100" id="pbPer100"></div>
+      <div class="seg" id="portionUnitSeg"></div>
+      <div class="grid g2" style="margin-top:10px">
+        <div>
+          <label id="qtyLabel">数量</label>
+          <input id="portionQty" type="number" inputmode="decimal" value="1">
+        </div>
+        <div>
+          <label>重量（克，自动换算）</label>
+          <input id="portionGrams" type="number" inputmode="decimal">
+        </div>
+      </div>
+      <div class="pb-result" id="pbResult"></div>
+      <div class="toolbar" style="margin-top:12px">
+        <button class="btn green" id="mealAdd">加入这一餐</button>
+        <button class="btn ghost" id="portionBack">重新选择</button>
+      </div>
+    </div>
+
+    <!-- 自定义食物 -->
+    <div id="customBox" class="hidden" style="margin-top:8px">
+      <p style="font-size:13px;color:var(--sub);margin:0 0 10px">填每 100g（或每份）的营养，添加后会存进你的食物库。</p>
+      <div class="field"><label>名称</label><input id="cfName" placeholder="如：食堂红烧排骨" autocomplete="off"></div>
+      <div class="grid g2">
+        <div><label>每 100g 热量(kcal)</label><input id="cfKcal" type="number" inputmode="decimal"></div>
+        <div><label>蛋白质(g)</label><input id="cfP" type="number" inputmode="decimal"></div>
+      </div>
+      <div class="grid g2" style="margin-top:8px">
+        <div><label>脂肪(g)</label><input id="cfF" type="number" inputmode="decimal"></div>
+        <div><label>碳水(g)</label><input id="cfC" type="number" inputmode="decimal"></div>
+      </div>
+      <div class="toolbar" style="margin-top:12px">
+        <button class="btn green" id="cfSave">保存并选择</button>
+        <button class="btn ghost" id="cfCancel">返回搜索</button>
+      </div>
+    </div>
+
+    <div class="toolbar" style="margin-top:14px">
+      <button class="btn ghost" id="customFoodBtn">✏️ 找不到？自定义食物</button>
+      <button class="btn ghost" id="mealCancel">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ========= 存储层 ========= */
 const KEY = 'fitlog_v1';
-function load(){ try{ const d=JSON.parse(localStorage.getItem(KEY))||{}; if(!Array.isArray(d.entries))d.entries=[]; if(!Array.isArray(d.templates))d.templates=[]; if(!d.sessions||typeof d.sessions!=='object')d.sessions={}; return d; }catch(e){ return {entries:[],templates:[],sessions:{}}; } }
+function load(){ try{ const d=JSON.parse(localStorage.getItem(KEY))||{}; if(!Array.isArray(d.entries))d.entries=[]; if(!Array.isArray(d.templates))d.templates=[]; if(!d.sessions||typeof d.sessions!=='object')d.sessions={}; if(!Array.isArray(d.meals))d.meals=[]; if(!Array.isArray(d.customFoods))d.customFoods=[]; return d; }catch(e){ return {entries:[],templates:[],sessions:{},meals:[],customFoods:[]}; } }
 function save(db){ db.updatedAt=Date.now(); localStorage.setItem(KEY, JSON.stringify(db)); scheduleAutoSync(); }
 let DB = load();
 
 /* entry: {id, date:'YYYY-MM-DD', name, sets:[{w,r,rest,done}], note, ts} */
 /* template: {id, name, exercises:[{name, count, rest}], ts} */
 /* sessions: { 'YYYY-MM-DD': {title, note} }  —— 一天即一次训练的元信息 */
+/* meal: {id, date:'YYYY-MM-DD', slot:'早/午/晚/加餐', name, grams, kcal, p, f, c, ts} —— 一条饮食记录（kcal/p/f/c 为该份量的实际值） */
+/* customFood: {id, name, cat, unit, base(每单位克数), per100:{kcal,p,f,c}, ts} —— 用户自建食物 */
 function getSession(date){ return DB.sessions[date] || {title:'',note:''}; }
 function setSession(date, obj){
   const cur=getSession(date); const next={...cur,...obj};
@@ -380,7 +494,7 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 
 const curDate = document.getElementById('curDate');
 curDate.value = todayStr();
-curDate.addEventListener('change', ()=>{ renderToday(); });
+curDate.addEventListener('change', ()=>{ renderToday(); renderDiet(); });
 
 /* 常用动作建议（供弹窗 datalist 使用） */
 function refreshSuggest(){
@@ -600,13 +714,15 @@ document.getElementById('impFile').onchange=ev=>{
     if(!d.entries||!Array.isArray(d.entries)) throw 0;
     if(!Array.isArray(d.templates)) d.templates=[];
     if(!d.sessions||typeof d.sessions!=='object') d.sessions={};
-    if(confirm('导入将覆盖当前所有数据，确定？')){ DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); toast('导入成功'); }
+    if(!Array.isArray(d.meals)) d.meals=[];
+    if(!Array.isArray(d.customFoods)) d.customFoods=[];
+    if(confirm('导入将覆盖当前所有数据，确定？')){ DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); toast('导入成功'); }
   }catch(e){ toast('文件格式不正确'); } };
   r.readAsText(f); ev.target.value='';
 };
 document.getElementById('clearAll').onclick=()=>{
   if(confirm('确定清空全部健身数据？此操作不可恢复（建议先下载备份）')){
-    DB={entries:[],templates:[],sessions:{}}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); toast('已清空'); }
+    DB={entries:[],templates:[],sessions:{},meals:[],customFoods:[]}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); toast('已清空'); }
 };
 
 /* ========= 云同步（GitHub Gist） ========= */
@@ -617,7 +733,7 @@ function saveSync(s){ localStorage.setItem(SYNC_KEY, JSON.stringify(s)); }
 let SYNC=loadSync();  // {token, gistId, auto}
 let autoSyncTimer=null, syncing=false;
 function setSyncStatus(msg, ok){ const el=document.getElementById('syncStatus'); if(el){ el.textContent=msg||''; el.style.color = ok===false?'var(--danger,#e66)':(ok===true?'var(--accent)':'var(--sub)'); } }
-function renderAll(){ refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); }
+function renderAll(){ refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); }
 
 async function gistRequest(method, path, body){
   const res=await fetch('https://api.github.com'+path,{
@@ -657,6 +773,8 @@ async function syncDownload(silent){
     if(!remote||!Array.isArray(remote.entries)) throw new Error('云端数据格式不正确');
     if(!Array.isArray(remote.templates)) remote.templates=[];
     if(!remote.sessions||typeof remote.sessions!=='object') remote.sessions={};
+    if(!Array.isArray(remote.meals)) remote.meals=[];
+    if(!Array.isArray(remote.customFoods)) remote.customFoods=[];
     if(silent){
       // 自动同步：仅当云端较新才覆盖本地
       if((remote.updatedAt||0) > (DB.updatedAt||0)){ DB=remote; localStorage.setItem(KEY, JSON.stringify(DB)); renderAll(); setSyncStatus('已从云端更新 · '+new Date().toLocaleString(), true); }
@@ -686,6 +804,243 @@ function scheduleAutoSync(){
 // 启动时若开启自动同步则拉取云端
 if(SYNC.auto && SYNC.token && SYNC.gistId){ syncDownload(true); }
 
+/* ========= 饮食记录 ========= */
+/* 食物库：per100 = 每 100g 的 {kcal,p(蛋白),f(脂肪),c(碳水)}；units = 常用份量(label→克数)，首项为默认。
+   成品菜按典型配方估算，食堂/不能称重场景看趋势足矣。 */
+const FOODS = [
+  // —— 主食 ——
+  {name:'米饭（熟）',cat:'主食',per100:{kcal:116,p:2.6,f:0.3,c:25.9},units:[{label:'小碗',g:150},{label:'中碗',g:220},{label:'大碗',g:300}]},
+  {name:'馒头',cat:'主食',per100:{kcal:223,p:7,f:1.1,c:47},units:[{label:'个',g:100}]},
+  {name:'面条（熟）',cat:'主食',per100:{kcal:110,p:4.5,f:0.5,c:23},units:[{label:'小碗',g:200},{label:'大碗',g:350}]},
+  {name:'包子（猪肉）',cat:'主食',per100:{kcal:227,p:8,f:9,c:28},units:[{label:'个',g:90}]},
+  {name:'白粥',cat:'主食',per100:{kcal:46,p:1.1,f:0.2,c:10},units:[{label:'碗',g:300}]},
+  {name:'红薯（蒸）',cat:'主食',per100:{kcal:90,p:1.1,f:0.2,c:21},units:[{label:'个',g:150}]},
+  {name:'玉米（煮）',cat:'主食',per100:{kcal:106,p:4,f:1.2,c:22.8},units:[{label:'根',g:200}]},
+  {name:'全麦面包',cat:'主食',per100:{kcal:246,p:9,f:3.4,c:46},units:[{label:'片',g:35}]},
+  {name:'燕麦片（干）',cat:'主食',per100:{kcal:377,p:15,f:7,c:61},units:[{label:'勺',g:30},{label:'碗',g:60}]},
+  // —— 肉蛋 ——
+  {name:'鸡胸肉（熟）',cat:'肉蛋',per100:{kcal:165,p:31,f:3.6,c:0},units:[{label:'块',g:120}]},
+  {name:'鸡蛋（全）',cat:'肉蛋',per100:{kcal:144,p:13,f:9,c:1.5},units:[{label:'个',g:50}]},
+  {name:'瘦猪肉（熟）',cat:'肉蛋',per100:{kcal:198,p:29,f:8,c:0},units:[{label:'份',g:100}]},
+  {name:'牛肉（熟）',cat:'肉蛋',per100:{kcal:250,p:26,f:15,c:0},units:[{label:'份',g:100}]},
+  {name:'三文鱼',cat:'肉蛋',per100:{kcal:208,p:20,f:13,c:0},units:[{label:'块',g:100}]},
+  {name:'虾仁',cat:'肉蛋',per100:{kcal:99,p:18,f:1.4,c:1.5},units:[{label:'份',g:100}]},
+  {name:'鸡腿（去皮熟）',cat:'肉蛋',per100:{kcal:181,p:24,f:9,c:0},units:[{label:'个',g:120}]},
+  // —— 蔬菜 ——
+  {name:'西兰花（焯）',cat:'蔬菜',per100:{kcal:36,p:4.1,f:0.6,c:4.3},units:[{label:'份',g:150}]},
+  {name:'青菜（炒）',cat:'蔬菜',per100:{kcal:60,p:2,f:4,c:4},units:[{label:'份',g:150}]},
+  {name:'番茄',cat:'蔬菜',per100:{kcal:20,p:0.9,f:0.2,c:4},units:[{label:'个',g:150}]},
+  {name:'黄瓜',cat:'蔬菜',per100:{kcal:16,p:0.8,f:0.2,c:2.9},units:[{label:'根',g:200}]},
+  {name:'土豆（蒸）',cat:'蔬菜',per100:{kcal:81,p:2.6,f:0.2,c:17.8},units:[{label:'个',g:150}]},
+  // —— 奶豆 ——
+  {name:'牛奶',cat:'奶豆',per100:{kcal:54,p:3,f:3.2,c:3.4},units:[{label:'盒/杯',g:250}]},
+  {name:'酸奶（原味）',cat:'奶豆',per100:{kcal:72,p:2.5,f:2.7,c:9.3},units:[{label:'盒',g:100},{label:'大盒',g:200}]},
+  {name:'豆浆',cat:'奶豆',per100:{kcal:31,p:3,f:1.6,c:1.2},units:[{label:'杯',g:300}]},
+  {name:'北豆腐',cat:'奶豆',per100:{kcal:116,p:12,f:8,c:2},units:[{label:'份',g:150}]},
+  {name:'鸡蛋白',cat:'奶豆',per100:{kcal:48,p:11,f:0.1,c:0},units:[{label:'个',g:33}]},
+  // —— 水果 ——
+  {name:'苹果',cat:'水果',per100:{kcal:54,p:0.2,f:0.2,c:13.5},units:[{label:'个',g:200}]},
+  {name:'香蕉',cat:'水果',per100:{kcal:93,p:1.4,f:0.2,c:22},units:[{label:'根',g:120}]},
+  {name:'橙子',cat:'水果',per100:{kcal:48,p:0.8,f:0.2,c:11.1},units:[{label:'个',g:200}]},
+  // —— 成品菜（按典型配方估算 per100）——
+  {name:'西红柿炒鸡蛋',cat:'成品菜',per100:{kcal:96,p:5,f:7,c:3.5},units:[{label:'小份',g:200},{label:'中份',g:300},{label:'大份',g:400}]},
+  {name:'红烧肉',cat:'成品菜',per100:{kcal:340,p:11,f:31,c:5},units:[{label:'小份',g:120},{label:'中份',g:180}]},
+  {name:'宫保鸡丁',cat:'成品菜',per100:{kcal:180,p:13,f:11,c:8},units:[{label:'中份',g:250}]},
+  {name:'鱼香肉丝',cat:'成品菜',per100:{kcal:160,p:9,f:10,c:9},units:[{label:'中份',g:250}]},
+  {name:'土豆丝（炒）',cat:'成品菜',per100:{kcal:110,p:1.8,f:6,c:13},units:[{label:'份',g:200}]},
+  {name:'麻婆豆腐',cat:'成品菜',per100:{kcal:135,p:8,f:9,c:5},units:[{label:'份',g:250}]},
+  {name:'青椒肉丝',cat:'成品菜',per100:{kcal:150,p:9,f:10,c:6},units:[{label:'中份',g:250}]},
+  {name:'糖醋里脊',cat:'成品菜',per100:{kcal:235,p:11,f:13,c:19},units:[{label:'中份',g:250}]},
+  {name:'清炒时蔬',cat:'成品菜',per100:{kcal:65,p:2,f:4.5,c:4},units:[{label:'份',g:200}]},
+  {name:'红烧鸡腿',cat:'成品菜',per100:{kcal:210,p:18,f:13,c:5},units:[{label:'个',g:150}]},
+  {name:'清蒸鱼',cat:'成品菜',per100:{kcal:120,p:18,f:5,c:1},units:[{label:'份',g:200}]},
+  {name:'蛋炒饭',cat:'成品菜',per100:{kcal:163,p:5,f:6,c:22},units:[{label:'份',g:350}]},
+  {name:'牛肉面',cat:'成品菜',per100:{kcal:110,p:6,f:3,c:15},units:[{label:'碗',g:550}]},
+  {name:'食堂荤素套餐',cat:'成品菜',per100:{kcal:160,p:8,f:8,c:15},units:[{label:'一份(米饭+两菜)',g:550}]},
+  // —— 零食饮料 ——
+  {name:'可乐',cat:'零食',per100:{kcal:43,p:0,f:0,c:10.8},units:[{label:'听',g:330},{label:'瓶',g:500}]},
+  {name:'坚果（混合）',cat:'零食',per100:{kcal:600,p:18,f:53,c:20},units:[{label:'小把',g:25}]},
+  {name:'蛋白粉',cat:'零食',per100:{kcal:400,p:80,f:6,c:8},units:[{label:'勺',g:30}]},
+];
+
+/* 用户自建食物 → 统一成 FOODS 结构 */
+function customToFood(cf){ return {name:cf.name,cat:'自定义',per100:cf.per100,units:[{label:'份',g:cf.base||100}],custom:true,id:cf.id}; }
+function allFoods(){ return [...DB.customFoods.map(customToFood), ...FOODS]; }
+
+const MEAL_SLOTS=['早餐','午餐','晚餐','加餐'];
+function mealStat(list){ return list.reduce((a,m)=>({kcal:a.kcal+m.kcal,p:a.p+m.p,f:a.f+m.f,c:a.c+m.c}),{kcal:0,p:0,f:0,c:0}); }
+function r0(n){ return Math.round(n); } function r1(n){ return Math.round(n*10)/10; }
+
+function renderDiet(){
+  const d=curDate.value;
+  const list=DB.meals.filter(m=>m.date===d).sort((a,b)=>a.ts-b.ts);
+  const sum=mealStat(list);
+  document.getElementById('dietSummary').innerHTML=`
+    <div class="diet-sum">
+      <div class="ds-kcal">${r0(sum.kcal)}<small>kcal · ${d===todayStr()?'今天':d}</small></div>
+      <div class="ds-macros">
+        <div class="ds-m p"><div class="v">${r0(sum.p)}g</div><div class="l">蛋白质</div></div>
+        <div class="ds-m f"><div class="v">${r0(sum.f)}g</div><div class="l">脂肪</div></div>
+        <div class="ds-m c"><div class="v">${r0(sum.c)}g</div><div class="l">碳水</div></div>
+      </div>
+    </div>`;
+  const box=document.getElementById('dietList'); box.innerHTML='';
+  if(!list.length){ box.innerHTML='<div class="empty">这一天还没有饮食记录，点下方「添加饮食」开始</div>'; return; }
+  MEAL_SLOTS.forEach(slot=>{
+    const items=list.filter(m=>m.slot===slot);
+    if(!items.length) return;
+    const s=mealStat(items);
+    const grp=document.createElement('div'); grp.className='meal-grp';
+    grp.innerHTML=`<div class="mg-head"><span class="mg-slot">${slot}</span><span>${r0(s.kcal)} kcal · 蛋${r0(s.p)} 脂${r0(s.f)} 碳${r0(s.c)}</span></div>`;
+    items.forEach(m=>{
+      const row=document.createElement('div'); row.className='meal-item';
+      row.innerHTML=`<div style="flex:1"><div class="mi-name">${m.name}</div>
+        <div class="mi-sub">${m.grams}g · 蛋${r1(m.p)} 脂${r1(m.f)} 碳${r1(m.c)}</div></div>
+        <div class="mi-kcal">${r0(m.kcal)} kcal</div>
+        <button class="x" title="删除">×</button>`;
+      row.querySelector('.x').onclick=()=>{ DB.meals=DB.meals.filter(x=>x.id!==m.id); save(DB); renderDiet(); };
+      grp.appendChild(row);
+    });
+    box.appendChild(grp);
+  });
+}
+
+/* 添加饮食弹窗 */
+const mealModalBg=document.getElementById('mealModalBg');
+let mealSlot='午餐', selFood=null, selUnitG=null;
+function openMealModal(){
+  selFood=null;
+  document.getElementById('customBox').classList.add('hidden');
+  document.getElementById('portionBox').classList.add('hidden');
+  document.getElementById('foodSearch').value='';
+  setMealCat('全部');
+  renderFoodResults('');
+  mealModalBg.classList.remove('hidden');
+}
+document.getElementById('addMealBtn').onclick=openMealModal;
+document.getElementById('mealCancel').onclick=()=>mealModalBg.classList.add('hidden');
+document.querySelectorAll('#mealSlotSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#mealSlotSeg button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); mealSlot=b.dataset.slot;
+});
+// 默认按时间猜测餐次
+(function(){ const h=new Date().getHours(); const def=h<10?'早餐':h<15?'午餐':h<21?'晚餐':'加餐'; mealSlot=def;
+  document.querySelectorAll('#mealSlotSeg button').forEach(x=>x.classList.toggle('active',x.dataset.slot===def)); })();
+
+let mealCat='全部';
+function foodCats(){ return ['全部','自定义','主食','肉蛋','蔬菜','奶豆','水果','成品菜','零食']; }
+function setMealCat(c){
+  mealCat=c;
+  document.getElementById('foodCats').innerHTML=foodCats().map(x=>
+    `<span class="fc ${x===c?'active':''}" data-c="${x}">${x}</span>`).join('');
+  document.querySelectorAll('#foodCats .fc').forEach(el=>el.onclick=()=>{ setMealCat(el.dataset.c); renderFoodResults(document.getElementById('foodSearch').value); });
+}
+function renderFoodResults(q){
+  q=(q||'').trim();
+  let list=allFoods();
+  if(mealCat!=='全部') list=list.filter(f=>f.cat===mealCat);
+  if(q) list=list.filter(f=>f.name.includes(q));
+  const box=document.getElementById('foodResults');
+  if(!list.length){ box.innerHTML='<div class="empty" style="padding:18px">没找到，换个词或点下方「自定义食物」</div>'; return; }
+  box.innerHTML='';
+  list.slice(0,60).forEach(f=>{
+    const row=document.createElement('div'); row.className='food-row';
+    row.innerHTML=`<div><div class="fr-name">${f.name}</div>
+      <div class="fr-meta">每100g ${f.per100.kcal}kcal · 蛋${f.per100.p} 脂${f.per100.f} 碳${f.per100.c}</div></div>
+      <span class="fr-tag">${f.cat}</span>`;
+    row.onclick=()=>selectFood(f);
+    box.appendChild(row);
+  });
+}
+document.getElementById('foodSearch').oninput=e=>renderFoodResults(e.target.value);
+
+function selectFood(f){
+  selFood=f;
+  document.getElementById('foodResults').classList.add('hidden');
+  document.getElementById('foodCats').classList.add('hidden');
+  document.getElementById('portionBox').classList.remove('hidden');
+  document.getElementById('pbName').textContent=f.name;
+  document.getElementById('pbPer100').textContent=`每100g：${f.per100.kcal}kcal · 蛋白${f.per100.p}g 脂肪${f.per100.f}g 碳水${f.per100.c}g`;
+  // 份量单位段：各 unit + 克
+  const seg=document.getElementById('portionUnitSeg');
+  seg.innerHTML=f.units.map((u,i)=>`<button data-g="${u.g}" class="${i===0?'active':''}">${u.label}(${u.g}g)</button>`).join('')
+    +`<button data-g="100">按克</button>`;
+  selUnitG=f.units[0].g;
+  document.getElementById('portionQty').value=1;
+  seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    seg.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+    selUnitG=parseFloat(b.dataset.g);
+    const isGram=b.textContent==='按克';
+    document.getElementById('qtyLabel').textContent=isGram?'数量(忽略)':'数量(份)';
+    document.getElementById('portionGrams').value = isGram?100:r0(selUnitG*(parseFloat(document.getElementById('portionQty').value)||1));
+    calcPortion();
+  });
+  document.getElementById('qtyLabel').textContent='数量(份)';
+  document.getElementById('portionGrams').value=selUnitG;
+  calcPortion();
+}
+function calcPortion(){
+  if(!selFood) return;
+  const g=parseFloat(document.getElementById('portionGrams').value)||0;
+  const k=selFood.per100, f=g/100;
+  const r={kcal:k.kcal*f,p:k.p*f,ff:k.f*f,c:k.c*f};
+  document.getElementById('pbResult').innerHTML=`${r0(g)}g → <b>${r0(r.kcal)} kcal</b> · 蛋白 ${r1(r.p)}g · 脂肪 ${r1(r.ff)}g · 碳水 ${r1(r.c)}g`;
+}
+document.getElementById('portionQty').oninput=()=>{
+  const q=parseFloat(document.getElementById('portionQty').value)||0;
+  document.getElementById('portionGrams').value=r0(selUnitG*q);
+  calcPortion();
+};
+document.getElementById('portionGrams').oninput=calcPortion;
+document.getElementById('portionBack').onclick=()=>{
+  document.getElementById('portionBox').classList.add('hidden');
+  document.getElementById('foodResults').classList.remove('hidden');
+  document.getElementById('foodCats').classList.remove('hidden');
+};
+document.getElementById('mealAdd').onclick=()=>{
+  if(!selFood) return;
+  const g=parseFloat(document.getElementById('portionGrams').value)||0;
+  if(g<=0){ toast('请填写份量'); return; }
+  const k=selFood.per100, fr=g/100;
+  DB.meals.push({id:uid(),date:curDate.value,slot:mealSlot,name:selFood.name,grams:r0(g),
+    kcal:r1(k.kcal*fr),p:r1(k.p*fr),f:r1(k.f*fr),c:r1(k.c*fr),ts:Date.now()});
+  save(DB);
+  document.getElementById('portionBox').classList.add('hidden');
+  document.getElementById('foodResults').classList.remove('hidden');
+  document.getElementById('foodCats').classList.remove('hidden');
+  document.getElementById('foodSearch').value=''; renderFoodResults('');
+  renderDiet(); toast(`已加入${mealSlot} ✓`);
+};
+/* 自定义食物 */
+document.getElementById('customFoodBtn').onclick=()=>{
+  document.getElementById('portionBox').classList.add('hidden');
+  document.getElementById('foodResults').classList.add('hidden');
+  document.getElementById('foodCats').classList.add('hidden');
+  document.getElementById('customBox').classList.remove('hidden');
+  document.getElementById('cfName').value=document.getElementById('foodSearch').value.trim();
+  ['cfKcal','cfP','cfF','cfC'].forEach(id=>document.getElementById(id).value='');
+};
+document.getElementById('cfCancel').onclick=()=>{
+  document.getElementById('customBox').classList.add('hidden');
+  document.getElementById('foodResults').classList.remove('hidden');
+  document.getElementById('foodCats').classList.remove('hidden');
+};
+document.getElementById('cfSave').onclick=()=>{
+  const name=document.getElementById('cfName').value.trim();
+  if(!name){ toast('请填写名称'); return; }
+  const per100={kcal:parseFloat(document.getElementById('cfKcal').value)||0,
+    p:parseFloat(document.getElementById('cfP').value)||0,
+    f:parseFloat(document.getElementById('cfF').value)||0,
+    c:parseFloat(document.getElementById('cfC').value)||0};
+  const cf={id:uid(),name,cat:'自定义',unit:'份',base:100,per100,ts:Date.now()};
+  DB.customFoods.push(cf); save(DB);
+  document.getElementById('customBox').classList.add('hidden');
+  document.getElementById('foodResults').classList.remove('hidden');
+  document.getElementById('foodCats').classList.remove('hidden');
+  selectFood(customToFood(cf));
+  toast('已存入食物库 ✓');
+};
+
 /* ========= 统计 ========= */
 function renderStat(){
   const box=document.getElementById('statBox');
@@ -707,9 +1062,11 @@ document.querySelectorAll('.tabbar button').forEach(b=>{
     const p=b.dataset.page;
     document.getElementById('page-log').classList.toggle('hidden',p!=='log');
     document.getElementById('page-tpl').classList.toggle('hidden',p!=='tpl');
+    document.getElementById('page-diet').classList.toggle('hidden',p!=='diet');
     document.getElementById('page-hist').classList.toggle('hidden',p!=='hist');
     document.getElementById('page-data').classList.toggle('hidden',p!=='data');
     if(p==='tpl') renderTpl();
+    if(p==='diet') renderDiet();
     if(p==='hist') renderHist();
     if(p==='data') renderStat();
   };
