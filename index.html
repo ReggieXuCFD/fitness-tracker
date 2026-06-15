@@ -540,6 +540,10 @@ function entryCard(e, interactive){
         <div class="meta">${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg${(interactive||doneN)?` · 已完成 ${doneN}/${e.sets.length}`:''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
+        ${interactive?`
+          <button class="btn ghost sm" data-up="${e.id}" title="上移">↑</button>
+          <button class="btn ghost sm" data-down="${e.id}" title="下移">↓</button>
+        `:''}
         <button class="btn ghost sm" data-edit="${e.id}">编辑</button>
         <button class="btn danger sm" data-del="${e.id}">删除</button>
       </div>
@@ -560,6 +564,9 @@ function entryCard(e, interactive){
       DB.entries=DB.entries.filter(x=>x.id!==e.id); save(DB); renderToday(); renderHist(); }
   };
   div.querySelector('[data-edit]').onclick=()=>openExModal(e.id);
+  const upBtn=div.querySelector('[data-up]'), dnBtn=div.querySelector('[data-down]');
+  if(upBtn) upBtn.onclick=()=>swapEntryOrder(e.id,-1);
+  if(dnBtn) dnBtn.onclick=()=>swapEntryOrder(e.id,1);
   if(interactive){
     const addBtn=div.querySelector('[data-addset]');
     if(addBtn) addBtn.onclick=()=>{
@@ -578,6 +585,20 @@ function entryCard(e, interactive){
     });
   }
   return div;
+}
+function swapEntryOrder(id, dir){
+  // 在当前日期的动作列表里，把 id 这条和邻居交换 ts（ts 越小越靠前）
+  const d=curDate.value;
+  const list=DB.entries.filter(e=>e.date===d).sort((a,b)=>a.ts-b.ts);
+  const i=list.findIndex(e=>e.id===id);
+  if(i<0) return;
+  const j=i+dir;
+  if(j<0 || j>=list.length) return;
+  const a=list[i], b=list[j];
+  const tmp=a.ts; a.ts=b.ts; b.ts=tmp;
+  // 保证两者 ts 不相等，避免再次排序不稳定：给一个微小偏移（±1ms）
+  if(a.ts===b.ts){ a.ts+=1; b.ts-=1; }
+  save(DB); renderToday(); renderHist();
 }
 function renderToday(){
   const d=curDate.value;
