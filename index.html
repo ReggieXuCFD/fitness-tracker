@@ -540,10 +540,8 @@ function entryCard(e, interactive){
         <div class="meta">${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg${(interactive||doneN)?` · 已完成 ${doneN}/${e.sets.length}`:''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
-        ${interactive?`
-          <button class="btn ghost sm" data-up="${e.id}" title="上移">↑</button>
-          <button class="btn ghost sm" data-down="${e.id}" title="下移">↓</button>
-        `:''}
+        <button class="btn ghost sm" data-up="${e.id}" title="上移">↑</button>
+        <button class="btn ghost sm" data-down="${e.id}" title="下移">↓</button>
         <button class="btn ghost sm" data-edit="${e.id}">编辑</button>
         <button class="btn danger sm" data-del="${e.id}">删除</button>
       </div>
@@ -587,16 +585,16 @@ function entryCard(e, interactive){
   return div;
 }
 function swapEntryOrder(id, dir){
-  // 在当前日期的动作列表里，把 id 这条和邻居交换 ts（ts 越小越靠前）
-  const d=curDate.value;
-  const list=DB.entries.filter(e=>e.date===d).sort((a,b)=>a.ts-b.ts);
-  const i=list.findIndex(e=>e.id===id);
+  // 通用：按 entry.id 反查日期，而不是假设当前日期
+  const e=DB.entries.find(x=>x.id===id);
+  if(!e) return;
+  const list=DB.entries.filter(x=>x.date===e.date).sort((a,b)=>a.ts-b.ts);
+  const i=list.findIndex(x=>x.id===id);
   if(i<0) return;
   const j=i+dir;
   if(j<0 || j>=list.length) return;
   const a=list[i], b=list[j];
   const tmp=a.ts; a.ts=b.ts; b.ts=tmp;
-  // 保证两者 ts 不相等，避免再次排序不稳定：给一个微小偏移（±1ms）
   if(a.ts===b.ts){ a.ts+=1; b.ts-=1; }
   save(DB); renderToday(); renderHist();
 }
@@ -613,6 +611,23 @@ function renderToday(){
 let selMode=false;
 const selDays=new Set();
 const expandDays=new Set();
+function copySessionToToday(srcDate){
+  const list=DB.entries.filter(e=>e.date===srcDate).sort((a,b)=>a.ts-b.ts);
+  if(!list.length){ toast('这一天没有动作可复制'); return; }
+  const dest=curDate.value;
+  if(srcDate===dest){
+    if(!confirm('源日期和目标日期相同，这会在同一天再创建一份相同动作。确认？')) return;
+  }
+  const prefix=Date.now();
+  list.forEach((e,i)=>{
+    const newSets=e.sets.map(s=>({w:s.w,r:s.r,rest:s.rest,done:false}));
+    DB.entries.push({id:uid(),date:dest,name:e.name,sets:newSets,note:'',ts:prefix+i});
+  });
+  save(DB);
+  // 切到记录页，展示今天
+  document.querySelector('button[data-page="log"]').click();
+  toast(`已复制 ${list.length} 个动作到 ${dest}`);
+}
 function renderHist(){
   const box=document.getElementById('histList'); box.innerHTML='';
   if(!DB.entries.length){ box.innerHTML='<div class="empty">还没有任何记录</div>'; return; }
@@ -638,6 +653,10 @@ function renderHist(){
     if(expanded){
       const body=document.createElement('div'); body.className='hist-body';
       list.forEach(e=>body.appendChild(entryCard(e)));
+      const cpy=document.createElement('button'); cpy.className='btn sm'; cpy.style.margin='8px 0 4px';
+      cpy.textContent='📋 复制到今天';
+      cpy.onclick=(ev)=>{ ev.stopPropagation(); copySessionToToday(d); };
+      body.appendChild(cpy);
       wrap.appendChild(body);
     }
     box.appendChild(wrap);
