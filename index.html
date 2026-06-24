@@ -387,6 +387,10 @@
       <input id="edSessDate" type="date">
     </div>
     <div class="field">
+      <label>体重（kg）</label>
+      <input id="edSessWeight" type="number" inputmode="decimal" placeholder="如：70.5" autocomplete="off">
+    </div>
+    <div class="field">
       <label>整体备注</label>
       <textarea id="edSessNote" placeholder="今天整体状态、训练目标等"></textarea>
     </div>
@@ -474,13 +478,13 @@ let DB = load();
 
 /* entry: {id, date:'YYYY-MM-DD', name, sets:[{w,r,rest,done}], note, ts} */
 /* template: {id, name, exercises:[{name, count, rest}], ts} */
-/* sessions: { 'YYYY-MM-DD': {title, note} }  —— 一天即一次训练的元信息 */
+/* sessions: { 'YYYY-MM-DD': {title, note, weight} }  —— 一天即一次训练的元信息（weight 单位 kg） */
 /* meal: {id, date:'YYYY-MM-DD', slot:'早/午/晚/加餐', name, grams, kcal, p, f, c, ts} —— 一条饮食记录（kcal/p/f/c 为该份量的实际值） */
 /* customFood: {id, name, cat, unit, base(每单位克数), per100:{kcal,p,f,c}, ts} —— 用户自建食物 */
-function getSession(date){ return DB.sessions[date] || {title:'',note:''}; }
+function getSession(date){ return DB.sessions[date] || {title:'',note:'',weight:''}; }
 function setSession(date, obj){
   const cur=getSession(date); const next={...cur,...obj};
-  if(!next.title && !next.note) delete DB.sessions[date];
+  if(!next.title && !next.note && !next.weight) delete DB.sessions[date];
   else DB.sessions[date]=next;
 }
 
@@ -521,7 +525,7 @@ function sessionHeader(date, list, opts={}){
       </div>
       <button class="btn ghost sm" data-sedit>编辑训练</button>
     </div>
-    <div class="s-stat">${list.length} 个动作 · ${st.sets} 组 · 容量 ${st.vol.toFixed(0)} kg${opts.showDone?` · 已完成 ${st.doneSets}/${st.sets} 组`:''}</div>
+    <div class="s-stat">${list.length} 个动作 · ${st.sets} 组 · 容量 ${st.vol.toFixed(0)} kg${opts.showDone?` · 已完成 ${st.doneSets}/${st.sets} 组`:''}${s.weight?` · ⚖️ ${s.weight} kg`:''}</div>
     ${s.note?`<div class="s-note">📝 ${s.note}</div>`:''}`;
   head.querySelector('[data-sedit]').onclick=(ev)=>{ ev.stopPropagation(); openSessModal(date); };
   return head;
@@ -1369,6 +1373,7 @@ function openSessModal(date){
   editingSessDate=date; const s=getSession(date);
   document.getElementById('edSessTitle').value=s.title||'';
   document.getElementById('edSessDate').value=date;
+  document.getElementById('edSessWeight').value=s.weight||'';
   document.getElementById('edSessNote').value=s.note||'';
   sessModalBg.classList.remove('hidden');
 }
@@ -1377,6 +1382,7 @@ document.getElementById('edSessSave').onclick=()=>{
   const oldDate=editingSessDate;
   const title=document.getElementById('edSessTitle').value.trim();
   const note=document.getElementById('edSessNote').value.trim();
+  const weight=document.getElementById('edSessWeight').value.trim();
   const newDate=document.getElementById('edSessDate').value||oldDate;
   if(newDate!==oldDate){
     // 把这天所有动作迁移到新日期
@@ -1384,8 +1390,8 @@ document.getElementById('edSessSave').onclick=()=>{
     const old=DB.sessions[oldDate]; if(old){ delete DB.sessions[oldDate]; }
   }
   // 写入新日期的元信息（先清旧再设）
-  DB.sessions[newDate]={title,note};
-  if(!title && !note) delete DB.sessions[newDate];
+  DB.sessions[newDate]={title,note,weight};
+  if(!title && !note && !weight) delete DB.sessions[newDate];
   save(DB);
   sessModalBg.classList.add('hidden');
   if(newDate!==oldDate) curDate.value=newDate;
