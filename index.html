@@ -61,10 +61,6 @@
   .add-set.sm{padding:6px;font-size:12px;margin-top:8px}
   .log-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
   .log-actions .btn{flex:1;min-width:120px}
-  .tpl-quick{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-top:14px}
-  .tpl-quick .tq-label{font-size:13px;color:var(--sub);margin-bottom:8px}
-  .tpl-quick .tq-chips{display:flex;flex-wrap:wrap;gap:8px}
-  .tpl-quick .tq-empty{font-size:13px;color:var(--sub)}
   .entry{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     padding:12px 14px;margin-top:10px}
   .entry .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
@@ -135,14 +131,6 @@
   .rest-bar .rt-btns .btn{padding:6px;flex:1;font-size:12px}
   .rest-prog{height:4px;background:var(--card2);border-radius:999px;margin-top:8px;overflow:hidden}
   .rest-prog>div{height:100%;background:var(--accent);width:100%;transition:width .25s linear}
-  /* 模板 */
-  .tpl-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-top:14px}
-  .tpl-card .tname{font-weight:700;font-size:16px}
-  .tpl-card .tmeta{font-size:12px;color:var(--sub);margin-top:2px}
-  .tpl-card .tex{font-size:13px;color:var(--text);margin-top:8px;line-height:1.7}
-  .tpl-card .tact{display:flex;gap:8px;margin-top:12px}
-  .tpl-ex-row{display:flex;align-items:center;gap:8px;margin-top:8px}
-  .tpl-ex-row input{flex:1}
   /* 历史选择导出 */
   .hist-day .d{display:flex;align-items:center;gap:8px}
   .hist-day .d input{width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);margin:0}
@@ -244,11 +232,8 @@
   <!-- ===== 记录页 ===== -->
   <section id="page-log">
     <div id="todayList"></div>
-    <div id="tplQuick" class="tpl-quick hidden"></div>
     <div class="log-actions">
       <button class="btn green" id="addExBtn">＋ 添加动作</button>
-      <button class="btn ghost" id="useTplBtn">📋 用模板</button>
-      <button class="btn ghost" id="saveTplBtn">💾 存为模板</button>
     </div>
     <datalist id="exList"></datalist>
   </section>
@@ -267,18 +252,6 @@
     </div>
     <div id="histCal"></div>
     <div id="histList"></div>
-  </section>
-
-  <!-- ===== 模板页 ===== -->
-  <section id="page-tpl" class="hidden">
-    <div class="card">
-      <h2>训练模板</h2>
-      <p style="font-size:13px;color:var(--sub);margin:0 0 12px">
-        把一套常练的动作存成模板，一键复制到某天的训练，再边练边打钩。
-      </p>
-      <button class="btn" id="newTplBtn">+ 新建模板</button>
-    </div>
-    <div id="tplList"></div>
   </section>
 
   <!-- ===== 数据页 ===== -->
@@ -342,7 +315,6 @@
 
 <nav class="tabbar">
   <button data-page="log" class="active"><span class="ic">📝</span>记录</button>
-  <button data-page="tpl"><span class="ic">📋</span>模板</button>
   <button data-page="diet"><span class="ic">🍱</span>饮食</button>
   <button data-page="hist"><span class="ic">📚</span>历史</button>
   <button data-page="data"><span class="ic">📤</span>数据</button>
@@ -372,24 +344,6 @@
     <div class="toolbar" style="margin-top:12px">
       <button class="btn" id="modalCopy">复制到剪贴板</button>
       <button class="btn ghost" id="modalClose">关闭</button>
-    </div>
-  </div>
-</div>
-
-<!-- 模板编辑弹窗 -->
-<div id="tplModalBg" class="modal-bg hidden">
-  <div class="modal">
-    <h3 id="tplModalTitle">新建模板</h3>
-    <div class="field">
-      <label>模板名称</label>
-      <input id="tplName" placeholder="如：胸 + 三头日" autocomplete="off">
-    </div>
-    <label>动作（动作名 · 组数 · 组间休息秒）</label>
-    <div id="tplExBox"></div>
-    <button class="add-set" id="tplAddEx">+ 增加动作</button>
-    <div class="toolbar" style="margin-top:14px">
-      <button class="btn green" id="tplSave">保存模板</button>
-      <button class="btn ghost" id="tplCancel">取消</button>
     </div>
   </div>
 </div>
@@ -552,7 +506,6 @@ let DB = load();
 
 /* entry: {id, date:'YYYY-MM-DD', exId, name, sets:[{w,r,rest,done}], note, ts} */
 /* exercise: {id, name, ts} —— 动作库，entry.exId 关联 */
-/* template: {id, name, exercises:[{name, count, rest}], ts} */
 /* sessions: { 'YYYY-MM-DD': {title, note, weight} }  —— 一天即一次训练的元信息（weight 单位 kg） */
 /* meal: {id, date:'YYYY-MM-DD', slot:'早/午/晚/加餐', name, grams, kcal, p, f, c, ts} —— 一条饮食记录（kcal/p/f/c 为该份量的实际值） */
 /* customFood: {id, name, cat, unit, base(每单位克数), per100:{kcal,p,f,c}, ts} —— 用户自建食物 */
@@ -715,7 +668,7 @@ function renderToday(){
   const d=curDate.value;
   const list=DB.entries.filter(e=>e.date===d).sort((a,b)=>a.ts-b.ts);
   const box=document.getElementById('todayList'); box.innerHTML='';
-  if(!list.length){ box.innerHTML='<div class="empty">这一天还没有记录，点下方「添加动作」或「用模板」开始</div>'; return; }
+  if(!list.length){ box.innerHTML='<div class="empty">这一天还没有记录，点下方「添加动作」开始，或在历史里把某天「复制到今天」</div>'; return; }
   box.appendChild(sessionHeader(d, list, {showDone:true}));
   list.forEach(e=>box.appendChild(entryCard(e, true)));
 }
@@ -943,13 +896,13 @@ document.getElementById('impFile').onchange=ev=>{
     if(!Array.isArray(d.meals)) d.meals=[];
     if(!Array.isArray(d.customFoods)) d.customFoods=[];
     if(!Array.isArray(d.exercises)) d.exercises=[];
-    if(confirm('导入将覆盖当前所有数据，确定？')){ migrateExercises(d); DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); toast('导入成功'); }
+    if(confirm('导入将覆盖当前所有数据，确定？')){ migrateExercises(d); DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderDiet(); toast('导入成功'); }
   }catch(e){ toast('文件格式不正确'); } };
   r.readAsText(f); ev.target.value='';
 };
 document.getElementById('clearAll').onclick=()=>{
   if(confirm('确定清空全部健身数据？此操作不可恢复（建议先下载备份）')){
-    DB={entries:[],templates:[],sessions:{},meals:[],customFoods:[],exercises:[]}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); toast('已清空'); }
+    DB={entries:[],templates:[],sessions:{},meals:[],customFoods:[],exercises:[]}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderDiet(); toast('已清空'); }
 };
 
 /* ========= 云同步（GitHub Gist） ========= */
@@ -960,7 +913,7 @@ function saveSync(s){ localStorage.setItem(SYNC_KEY, JSON.stringify(s)); }
 let SYNC=loadSync();  // {token, gistId, auto}
 let autoSyncTimer=null, syncing=false;
 function setSyncStatus(msg, ok){ const el=document.getElementById('syncStatus'); if(el){ el.textContent=msg||''; el.style.color = ok===false?'var(--danger,#e66)':(ok===true?'var(--accent)':'var(--sub)'); } }
-function renderAll(){ refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); }
+function renderAll(){ refreshSuggest(); renderToday(); renderHist(); renderStat(); renderDiet(); }
 
 async function gistRequest(method, path, body){
   const res=await fetch('https://api.github.com'+path,{
@@ -1290,11 +1243,9 @@ document.querySelectorAll('.tabbar button').forEach(b=>{
     b.classList.add('active');
     const p=b.dataset.page;
     document.getElementById('page-log').classList.toggle('hidden',p!=='log');
-    document.getElementById('page-tpl').classList.toggle('hidden',p!=='tpl');
     document.getElementById('page-diet').classList.toggle('hidden',p!=='diet');
     document.getElementById('page-hist').classList.toggle('hidden',p!=='hist');
     document.getElementById('page-data').classList.toggle('hidden',p!=='data');
-    if(p==='tpl') renderTpl();
     if(p==='diet') renderDiet();
     if(p==='hist') renderHist();
     if(p==='data') renderStat();
@@ -1374,115 +1325,7 @@ document.getElementById('restMinus').onclick=()=>{ const nl=Math.max(1,restLeft-
   grip.addEventListener('pointerup',e=>{ if(!dragging) return; dragging=false; clamp(); });
 })();
 
-/* ========= 模板 ========= */
-let editingTplId=null;
-function renderTpl(){
-  const box=document.getElementById('tplList'); box.innerHTML='';
-  if(!DB.templates.length){ box.innerHTML='<div class="empty">还没有模板，点上面「新建模板」创建一套常练的动作</div>'; return; }
-  DB.templates.slice().sort((a,b)=>b.ts-a.ts).forEach(t=>{
-    const totalSets=t.exercises.reduce((a,x)=>a+(x.count||0),0);
-    const div=document.createElement('div'); div.className='tpl-card';
-    div.innerHTML=`
-      <div class="tname">${t.name}</div>
-      <div class="tmeta">${t.exercises.length} 个动作 · ${totalSets} 组</div>
-      <div class="tex">${t.exercises.map(x=>`${x.name}（${x.count}组${x.rest?` · 休${x.rest}s`:''}）`).join('<br>')}</div>
-      <div class="tact">
-        <button class="btn green sm" data-use>复制到当前日期</button>
-        <button class="btn ghost sm" data-edit>编辑</button>
-        <button class="btn danger sm" data-del>删除</button>
-      </div>`;
-    div.querySelector('[data-use]').onclick=()=>applyTemplate(t);
-    div.querySelector('[data-edit]').onclick=()=>openTplModal(t);
-    div.querySelector('[data-del]').onclick=()=>{
-      if(confirm('删除模板「'+t.name+'」？')){ DB.templates=DB.templates.filter(x=>x.id!==t.id); save(DB); renderTpl(); }
-    };
-    box.appendChild(div);
-  });
-}
-function applyTemplate(t){
-  const d=curDate.value;
-  t.exercises.forEach(x=>{
-    const sets=[]; for(let i=0;i<(x.count||1);i++) sets.push({w:0,r:0,rest:x.rest||0,done:false});
-    DB.entries.push({id:uid(),date:d,name:x.name,sets,note:'',ts:Date.now()+Math.floor(Math.random()*1000)});
-  });
-  save(DB); refreshSuggest();
-  document.querySelector('.tabbar button[data-page="log"]').click();
-  renderToday();
-  toast(`已把「${t.name}」复制到 ${d}`);
-}
-/* 模板编辑弹窗 */
-const tplModalBg=document.getElementById('tplModalBg'), tplExBox=document.getElementById('tplExBox');
-function tplExRow(x={name:'',count:'',rest:''}){
-  const row=document.createElement('div'); row.className='tpl-ex-row';
-  row.innerHTML=`
-    <input class="tx-name" placeholder="动作名" value="${x.name||''}" list="exList" autocomplete="off">
-    <input class="tx-count" type="number" inputmode="numeric" placeholder="组数" value="${x.count||''}" style="max-width:72px">
-    <input class="tx-rest" type="number" inputmode="numeric" placeholder="休息s" value="${x.rest||''}" style="max-width:80px">
-    <button class="x" title="删除">×</button>`;
-  row.querySelector('.x').onclick=()=>row.remove();
-  return row;
-}
-function openTplModal(t){
-  editingTplId = t? t.id : null;
-  document.getElementById('tplModalTitle').textContent = t? '编辑模板' : '新建模板';
-  document.getElementById('tplName').value = t? t.name : '';
-  tplExBox.innerHTML='';
-  const exs = t? t.exercises : [{name:'',count:3,rest:90}];
-  exs.forEach(x=>tplExBox.appendChild(tplExRow(x)));
-  tplModalBg.classList.remove('hidden');
-}
-document.getElementById('newTplBtn').onclick=()=>openTplModal(null);
-document.getElementById('tplAddEx').onclick=()=>tplExBox.appendChild(tplExRow({name:'',count:3,rest:90}));
-document.getElementById('tplCancel').onclick=()=>tplModalBg.classList.add('hidden');
-document.getElementById('tplSave').onclick=()=>{
-  const name=document.getElementById('tplName').value.trim();
-  if(!name){ toast('请填写模板名称'); return; }
-  const exercises=[...tplExBox.querySelectorAll('.tpl-ex-row')].map(r=>({
-    name:r.querySelector('.tx-name').value.trim(),
-    count:parseInt(r.querySelector('.tx-count').value)||1,
-    rest:parseInt(r.querySelector('.tx-rest').value)||0
-  })).filter(x=>x.name);
-  if(!exercises.length){ toast('至少添加一个动作'); return; }
-  if(editingTplId){
-    const t=DB.templates.find(x=>x.id===editingTplId); if(t){ t.name=name; t.exercises=exercises; }
-  } else {
-    DB.templates.push({id:uid(),name,exercises,ts:Date.now()});
-  }
-  save(DB); tplModalBg.classList.add('hidden'); renderTpl(); toast('模板已保存 ✓');
-};
-/* 记录页：本日存为模板 / 从模板开始 */
-document.getElementById('saveTplBtn').onclick=()=>{
-  const d=curDate.value;
-  const list=DB.entries.filter(e=>e.date===d).sort((a,b)=>a.ts-b.ts);
-  if(!list.length){ toast('本日还没有动作，无法存为模板'); return; }
-  const name=prompt('模板名称：', d+' 训练');
-  if(name===null) return;
-  const nm=name.trim(); if(!nm){ toast('名称不能为空'); return; }
-  const exercises=list.map(e=>({name:e.name,count:e.sets.length,rest:(e.sets.find(s=>s.rest)||{}).rest||0}));
-  DB.templates.push({id:uid(),name:nm,exercises,ts:Date.now()});
-  save(DB); toast('已存为模板 ✓');
-};
-document.getElementById('useTplBtn').onclick=()=>{
-  const q=document.getElementById('tplQuick');
-  if(!q.classList.contains('hidden')){ q.classList.add('hidden'); return; }
-  renderTplQuick(); q.classList.remove('hidden');
-};
 document.getElementById('addExBtn').onclick=()=>openNewExModal();
-/* 记录页：模板快速选择条 */
-function renderTplQuick(){
-  const q=document.getElementById('tplQuick');
-  if(!DB.templates.length){
-    q.innerHTML='<div class="tq-empty">还没有模板，去「模板」页新建一套常练动作</div>';
-    return;
-  }
-  q.innerHTML='<div class="tq-label">选一个模板复制到当前训练：</div>'+
-    '<div class="tq-chips">'+DB.templates.slice().sort((a,b)=>b.ts-a.ts).map(t=>
-      `<button class="btn ghost sm" data-tpl="${t.id}">${t.name}（${t.exercises.length}动作）</button>`).join('')+'</div>';
-  q.querySelectorAll('[data-tpl]').forEach(b=>b.onclick=()=>{
-    const t=DB.templates.find(x=>x.id===b.dataset.tpl); if(t) applyTemplate(t);
-    q.classList.add('hidden');
-  });
-}
 
 /* ========= 编辑动作 ========= */
 let editingExId=null;
