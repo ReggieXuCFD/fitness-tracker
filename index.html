@@ -705,6 +705,7 @@ function toMarkdown(daysFilter){
     const title=s.title? `${s.title}（${d}）` : d;
     md+=`## ${title}\n\n`;
     md+=`> ${list.length} 个动作，${sc} 组，总容量 ${vol.toFixed(0)} kg\n`;
+    if(s.weight) md+=`> 体重：${s.weight} kg\n`;
     if(s.note) md+=`> 整体备注：${s.note}\n`;
     md+='\n';
     list.forEach(e=>{
