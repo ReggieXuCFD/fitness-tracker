@@ -169,6 +169,16 @@
   .cal-cell .cal-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
   .cal-cell .cal-vol{font-size:9px;color:var(--accent);line-height:1}
   .cal-detail{margin-top:8px}
+  /* 部位标签 */
+  .s-parts{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+  .part-tag{font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;
+    color:var(--pc);background:rgba(255,255,255,.04);border:1px solid var(--pc)}
+  .cal-cell .cal-parts{font-size:9px;color:var(--accent);line-height:1.1;text-align:center;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .part-pick{display:flex;flex-wrap:wrap;gap:8px}
+  .part-chip{font-size:14px;padding:7px 14px;border-radius:999px;background:var(--card2);
+    border:1px solid var(--line);color:var(--sub);cursor:pointer}
+  .part-chip.active{background:rgba(255,255,255,.05);border-color:var(--pc);color:var(--pc);font-weight:600}
   .ex-actions{display:flex;gap:8px;margin-top:10px}
   .modal .set-row{grid-template-columns:30px 1fr 1fr 70px 32px}
   .modal .set-row .idx{font-size:13px;color:var(--sub);text-align:center}
@@ -356,6 +366,10 @@
       <label>动作名称</label>
       <input id="edExName" list="exList" placeholder="如：杠铃卧推" autocomplete="off">
     </div>
+    <div class="field">
+      <label>训练部位</label>
+      <div class="part-pick" id="edExPart"></div>
+    </div>
     <label>组数（重量 kg × 次数 · 组间休息秒）</label>
     <div class="sets" id="edSetsBox"></div>
     <button class="add-set" id="edAddSet">+ 增加一组</button>
@@ -374,10 +388,6 @@
 <div id="sessModalBg" class="modal-bg hidden">
   <div class="modal">
     <h3>编辑这次训练</h3>
-    <div class="field">
-      <label>训练名称（如：胸 + 三头）</label>
-      <input id="edSessTitle" placeholder="给这次训练起个名" autocomplete="off">
-    </div>
     <div class="field">
       <label>训练日期</label>
       <input id="edSessDate" type="date">
@@ -505,14 +515,14 @@ function findOrCreateExercise(name){
 let DB = load();
 
 /* entry: {id, date:'YYYY-MM-DD', exId, name, sets:[{w,r,rest,done}], note, ts} */
-/* exercise: {id, name, ts} —— 动作库，entry.exId 关联 */
-/* sessions: { 'YYYY-MM-DD': {title, note, weight} }  —— 一天即一次训练的元信息（weight 单位 kg） */
+/* exercise: {id, name, part, ts} —— 动作库，entry.exId 关联，part 为训练部位 */
+/* sessions: { 'YYYY-MM-DD': {note, weight} }  —— 一天即一次训练的元信息（weight 单位 kg） */
 /* meal: {id, date:'YYYY-MM-DD', slot:'早/午/晚/加餐', name, grams, kcal, p, f, c, ts} —— 一条饮食记录（kcal/p/f/c 为该份量的实际值） */
 /* customFood: {id, name, cat, unit, base(每单位克数), per100:{kcal,p,f,c}, ts} —— 用户自建食物 */
-function getSession(date){ return DB.sessions[date] || {title:'',note:'',weight:''}; }
+function getSession(date){ return DB.sessions[date] || {note:'',weight:''}; }
 function setSession(date, obj){
   const cur=getSession(date); const next={...cur,...obj};
-  if(!next.title && !next.note && !next.weight) delete DB.sessions[date];
+  if(!next.note && !next.weight) delete DB.sessions[date];
   else DB.sessions[date]=next;
 }
 
@@ -521,6 +531,21 @@ function todayStr(d){ d=d||new Date(); const z=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
 function parseDate(s){ const p=String(s).split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
 function weekdayCn(s){ return '周'+'日一二三四五六'[parseDate(s).getDay()]; }
+
+/* ========= 训练部位 ========= */
+const PARTS=['胸','背','腿','肩','手臂','核心'];
+const PART_COLOR={'胸':'#ff8c69','背':'#4f9cf9','腿':'#36c275','肩':'#f5a623','手臂':'#b07cff','核心':'#ff6fae'};
+/* 取某动作（exId）的部位标签 */
+function exPart(exId){ const ex=DB.exercises.find(x=>x.id===exId); return ex&&ex.part? ex.part : ''; }
+/* 一次训练（动作列表）涉及的部位，按 PARTS 固定顺序去重 */
+function sessionParts(list){
+  const set=new Set();
+  list.forEach(e=>{ const p=exPart(e.exId); if(p) set.add(p); });
+  return PARTS.filter(p=>set.has(p));
+}
+function partTagsHtml(parts){
+  return parts.map(p=>`<span class="part-tag" style="--pc:${PART_COLOR[p]||'var(--sub)'}">${p}</span>`).join('');
+}
 
 /* ========= 通用 UI ========= */
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg;
@@ -551,7 +576,7 @@ function sessionHeader(date, list, opts={}){
     <div class="s-top">
       <div>
         <div class="s-title">${opts.collapsible?`<span class="s-arrow">${opts.expanded?'▾':'▸'}</span> `:''}📅 ${date} ${weekdayCn(date)}</div>
-        <div class="s-date">${s.title? s.title : '一次训练'}</div>
+        ${sessionParts(list).length?`<div class="s-parts">${partTagsHtml(sessionParts(list))}</div>`:`<div class="s-date">未标部位</div>`}
       </div>
       <button class="btn ghost sm" data-sedit>编辑训练</button>
     </div>
@@ -738,9 +763,9 @@ function renderHistCal(){
     if(list && list.length){
       c.classList.add('has');
       if(selMode && selDays.has(ds)) c.classList.add('sel');
-      const vol=list.reduce((a,e)=>a+e.sets.reduce((x,s)=>x+s.w*s.r,0),0);
-      const volTxt=vol>=1000?(vol/1000).toFixed(1)+'k':vol.toFixed(0);
-      c.innerHTML='<span>'+day+'</span><span class="cal-dot"></span><span class="cal-vol">'+volTxt+'</span>';
+      const parts=sessionParts(list);
+      const partTxt=parts.length? parts.map(p=>p==='手臂'?'臂':(p==='核心'?'心':p)).join('') : '';
+      c.innerHTML='<span>'+day+'</span><span class="cal-dot"></span>'+(partTxt?'<span class="cal-parts">'+partTxt+'</span>':'');
       c.onclick=function(){
         if(selMode){
           if(selDays.has(ds)) selDays.delete(ds); else selDays.add(ds);
@@ -836,7 +861,8 @@ function toMarkdown(daysFilter){
     const list=byDay[d].sort((a,b)=>a.ts-b.ts);
     let vol=0,sc=0; list.forEach(e=>{ sc+=e.sets.length; vol+=e.sets.reduce((a,s)=>a+s.w*s.r,0); });
     const s=getSession(d);
-    const title=s.title? `${s.title}（${d}）` : d;
+    const parts=sessionParts(list);
+    const title=parts.length? `${d} ${weekdayCn(d)}（${parts.join('、')}）` : `${d} ${weekdayCn(d)}`;
     md+=`## ${title}\n\n`;
     md+=`> ${list.length} 个动作，${sc} 组，总容量 ${vol.toFixed(0)} kg\n`;
     if(s.weight) md+=`> 体重：${s.weight} kg\n`;
@@ -1329,7 +1355,17 @@ document.getElementById('addExBtn').onclick=()=>openNewExModal();
 
 /* ========= 编辑动作 ========= */
 let editingExId=null;
+let edExPart='';
 const exModalBg=document.getElementById('exModalBg'), edSetsBox=document.getElementById('edSetsBox');
+function renderPartPick(){
+  const box=document.getElementById('edExPart'); box.innerHTML='';
+  PARTS.forEach(p=>{
+    const b=document.createElement('button'); b.type='button'; b.className='part-chip'+(edExPart===p?' active':'');
+    b.textContent=p; if(edExPart===p) b.style.setProperty('--pc', PART_COLOR[p]);
+    b.onclick=()=>{ edExPart = edExPart===p? '' : p; renderPartPick(); };
+    box.appendChild(b);
+  });
+}
 function edSetRow(s={w:'',r:'',rest:''}, idx=0){
   const div=document.createElement('div'); div.className='set-row';
   div.innerHTML=`
@@ -1348,6 +1384,7 @@ function openExModal(id){
   document.getElementById('exModalTitle').textContent='编辑动作';
   document.getElementById('edExName').value=e.name;
   document.getElementById('edExNote').value=e.note||'';
+  edExPart=exPart(e.exId); renderPartPick();
   edSetsBox.innerHTML='';
   e.sets.forEach((s,i)=>edSetsBox.appendChild(edSetRow({w:s.w,r:s.r,rest:s.rest||''},i)));
   if(!e.sets.length) edSetsBox.appendChild(edSetRow({},0));
@@ -1357,6 +1394,7 @@ function openNewExModal(){
   editingExId=null;
   document.getElementById('exModalTitle').textContent='添加动作';
   document.getElementById('edExName').value='';
+  edExPart=''; renderPartPick();
   document.getElementById('edExNote').value='';
   edSetsBox.innerHTML='';
   edSetsBox.appendChild(edSetRow({w:'',r:'',rest:''},0));
@@ -1386,6 +1424,7 @@ document.getElementById('edExSave').onclick=()=>{
   if(!sets.length){ toast('至少填写一组重量或次数'); return; }
   const note=document.getElementById('edExNote').value.trim();
   const ex=findOrCreateExercise(name);
+  if(ex) ex.part=edExPart;
   if(isNew){
     DB.entries.push({id:uid(),date:curDate.value,exId:ex?ex.id:undefined,name,sets,note,ts:Date.now()});
   }else{
@@ -1400,7 +1439,6 @@ let editingSessDate=null;
 const sessModalBg=document.getElementById('sessModalBg');
 function openSessModal(date){
   editingSessDate=date; const s=getSession(date);
-  document.getElementById('edSessTitle').value=s.title||'';
   document.getElementById('edSessDate').value=date;
   document.getElementById('edSessWeight').value=s.weight||'';
   document.getElementById('edSessNote').value=s.note||'';
@@ -1409,7 +1447,6 @@ function openSessModal(date){
 document.getElementById('edSessCancel').onclick=()=>sessModalBg.classList.add('hidden');
 document.getElementById('edSessSave').onclick=()=>{
   const oldDate=editingSessDate;
-  const title=document.getElementById('edSessTitle').value.trim();
   const note=document.getElementById('edSessNote').value.trim();
   const weight=document.getElementById('edSessWeight').value.trim();
   const newDate=document.getElementById('edSessDate').value||oldDate;
@@ -1419,8 +1456,8 @@ document.getElementById('edSessSave').onclick=()=>{
     const old=DB.sessions[oldDate]; if(old){ delete DB.sessions[oldDate]; }
   }
   // 写入新日期的元信息（先清旧再设）
-  DB.sessions[newDate]={title,note,weight};
-  if(!title && !note && !weight) delete DB.sessions[newDate];
+  DB.sessions[newDate]={note,weight};
+  if(!note && !weight) delete DB.sessions[newDate];
   save(DB);
   sessModalBg.classList.add('hidden');
   if(newDate!==oldDate) curDate.value=newDate;
