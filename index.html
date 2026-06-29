@@ -201,6 +201,14 @@
   .portion-box .pb-result{margin-top:12px;background:var(--card2);border:1px solid var(--line);
     border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.7}
   .portion-box .pb-result b{color:var(--green)}
+  /* 动作历史 */
+  .name-link{cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+  .name-link:active{color:var(--accent)}
+  .exh-day{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;background:var(--card2)}
+  .exh-day .exh-d{font-size:13px;font-weight:700;color:var(--accent);display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .exh-day .exh-best{font-size:12px;color:var(--sub);font-weight:600}
+  .exh-day .exh-sets{font-size:14px;margin-top:6px;display:flex;flex-wrap:wrap;gap:6px}
+  .exh-empty{text-align:center;color:var(--sub);padding:24px 10px;font-size:14px}
 </style>
 </head>
 <body>
@@ -480,14 +488,47 @@
   </div>
 </div>
 
+<!-- 动作历史弹窗 -->
+<div id="exHistBg" class="modal-bg hidden">
+  <div class="modal">
+    <h3 id="exHistTitle">动作历史</h3>
+    <div id="exHistBody"></div>
+    <div class="toolbar" style="margin-top:14px">
+      <button class="btn ghost" id="exHistClose">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ========= 存储层 ========= */
 const KEY = 'fitlog_v1';
-function load(){ try{ const d=JSON.parse(localStorage.getItem(KEY))||{}; if(!Array.isArray(d.entries))d.entries=[]; if(!Array.isArray(d.templates))d.templates=[]; if(!d.sessions||typeof d.sessions!=='object')d.sessions={}; if(!Array.isArray(d.meals))d.meals=[]; if(!Array.isArray(d.customFoods))d.customFoods=[]; return d; }catch(e){ return {entries:[],templates:[],sessions:{},meals:[],customFoods:[]}; } }
+function load(){ try{ const d=JSON.parse(localStorage.getItem(KEY))||{}; if(!Array.isArray(d.entries))d.entries=[]; if(!Array.isArray(d.templates))d.templates=[]; if(!d.sessions||typeof d.sessions!=='object')d.sessions={}; if(!Array.isArray(d.meals))d.meals=[]; if(!Array.isArray(d.customFoods))d.customFoods=[]; if(!Array.isArray(d.exercises))d.exercises=[]; migrateExercises(d); return d; }catch(e){ return {entries:[],templates:[],sessions:{},meals:[],customFoods:[],exercises:[]}; } }
 function save(db){ db.updatedAt=Date.now(); localStorage.setItem(KEY, JSON.stringify(db)); scheduleAutoSync(); }
+/* 存量迁移：为没有 exId 的历史记录按动作名建立动作库并关联（幂等） */
+function migrateExercises(d){
+  if(!Array.isArray(d.exercises)) d.exercises=[];
+  const byName={}; d.exercises.forEach(x=>{ byName[x.name.trim()]=x; });
+  let changed=false;
+  d.entries.forEach(e=>{
+    if(e.exId || !e.name) return;
+    const key=e.name.trim();
+    let ex=byName[key];
+    if(!ex){ ex={id:'ex_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7), name:key, ts:Date.now()}; d.exercises.push(ex); byName[key]=ex; }
+    e.exId=ex.id; changed=true;
+  });
+  return changed;
+}
+/* 在动作库中按名查找，没有则新建并返回（写入全局 DB） */
+function findOrCreateExercise(name){
+  const key=(name||'').trim(); if(!key) return null;
+  let ex=DB.exercises.find(x=>x.name.trim()===key);
+  if(!ex){ ex={id:'ex_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7), name:key, ts:Date.now()}; DB.exercises.push(ex); }
+  return ex;
+}
 let DB = load();
 
-/* entry: {id, date:'YYYY-MM-DD', name, sets:[{w,r,rest,done}], note, ts} */
+/* entry: {id, date:'YYYY-MM-DD', exId, name, sets:[{w,r,rest,done}], note, ts} */
+/* exercise: {id, name, ts} —— 动作库，entry.exId 关联 */
 /* template: {id, name, exercises:[{name, count, rest}], ts} */
 /* sessions: { 'YYYY-MM-DD': {title, note, weight} }  —— 一天即一次训练的元信息（weight 单位 kg） */
 /* meal: {id, date:'YYYY-MM-DD', slot:'早/午/晚/加餐', name, grams, kcal, p, f, c, ts} —— 一条饮食记录（kcal/p/f/c 为该份量的实际值） */
@@ -513,7 +554,7 @@ curDate.addEventListener('change', ()=>{ renderToday(); renderDiet(); });
 
 /* 常用动作建议（供弹窗 datalist 使用） */
 function refreshSuggest(){
-  const names=[...new Set(DB.entries.map(e=>e.name))];
+  const names=[...new Set(DB.exercises.map(e=>e.name))];
   const common=['杠铃卧推','深蹲','硬拉','引体向上','坐姿划船','哑铃飞鸟','肩上推举','二头弯举','腿举','卷腹'];
   const merged=[...new Set([...names,...common])];
   const dl=document.getElementById('exList'); dl.innerHTML=merged.map(n=>`<option value="${n}">`).join('');
@@ -551,7 +592,7 @@ function entryCard(e, interactive){
   div.innerHTML=`
     <div class="top">
       <div>
-        <div class="name">${e.name}</div>
+        <div class="name name-link" data-hist="${e.exId||''}" title="查看历史">${e.name}</div>
         <div class="meta">${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg${(interactive||doneN)?` · 已完成 ${doneN}/${e.sets.length}`:''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
@@ -582,6 +623,8 @@ function entryCard(e, interactive){
       DB.entries=DB.entries.filter(x=>x.id!==e.id); save(DB); renderToday(); renderHist(); }
   };
   div.querySelector('[data-edit]').onclick=()=>openExModal(e.id);
+  const histEl=div.querySelector('[data-hist]');
+  if(histEl) histEl.onclick=()=>openExHistory(e.exId, e.name);
   const upBtn=div.querySelector('[data-up]'), dnBtn=div.querySelector('[data-down]');
   if(upBtn) upBtn.onclick=()=>swapEntryOrder(e.id,-1);
   if(dnBtn) dnBtn.onclick=()=>swapEntryOrder(e.id,1);
@@ -802,13 +845,14 @@ document.getElementById('impFile').onchange=ev=>{
     if(!d.sessions||typeof d.sessions!=='object') d.sessions={};
     if(!Array.isArray(d.meals)) d.meals=[];
     if(!Array.isArray(d.customFoods)) d.customFoods=[];
-    if(confirm('导入将覆盖当前所有数据，确定？')){ DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); toast('导入成功'); }
+    if(!Array.isArray(d.exercises)) d.exercises=[];
+    if(confirm('导入将覆盖当前所有数据，确定？')){ migrateExercises(d); DB=d; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); toast('导入成功'); }
   }catch(e){ toast('文件格式不正确'); } };
   r.readAsText(f); ev.target.value='';
 };
 document.getElementById('clearAll').onclick=()=>{
   if(confirm('确定清空全部健身数据？此操作不可恢复（建议先下载备份）')){
-    DB={entries:[],templates:[],sessions:{},meals:[],customFoods:[]}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); toast('已清空'); }
+    DB={entries:[],templates:[],sessions:{},meals:[],customFoods:[],exercises:[]}; save(DB); refreshSuggest(); renderToday(); renderHist(); renderStat(); renderTpl(); renderDiet(); toast('已清空'); }
 };
 
 /* ========= 云同步（GitHub Gist） ========= */
@@ -861,6 +905,8 @@ async function syncDownload(silent){
     if(!remote.sessions||typeof remote.sessions!=='object') remote.sessions={};
     if(!Array.isArray(remote.meals)) remote.meals=[];
     if(!Array.isArray(remote.customFoods)) remote.customFoods=[];
+    if(!Array.isArray(remote.exercises)) remote.exercises=[];
+    migrateExercises(remote);
     if(silent){
       // 自动同步：仅当云端较新才覆盖本地
       if((remote.updatedAt||0) > (DB.updatedAt||0)){ DB=remote; localStorage.setItem(KEY, JSON.stringify(DB)); renderAll(); setSyncStatus('已从云端更新 · '+new Date().toLocaleString(), true); }
@@ -1399,10 +1445,11 @@ document.getElementById('edExSave').onclick=()=>{
   })).filter(s=>s.w||s.r);
   if(!sets.length){ toast('至少填写一组重量或次数'); return; }
   const note=document.getElementById('edExNote').value.trim();
+  const ex=findOrCreateExercise(name);
   if(isNew){
-    DB.entries.push({id:uid(),date:curDate.value,name,sets,note,ts:Date.now()});
+    DB.entries.push({id:uid(),date:curDate.value,exId:ex?ex.id:undefined,name,sets,note,ts:Date.now()});
   }else{
-    e.name=name; e.sets=sets; e.note=note;
+    e.name=name; e.sets=sets; e.note=note; e.exId=ex?ex.id:e.exId;
   }
   save(DB); exModalBg.classList.add('hidden'); refreshSuggest(); renderToday(); renderHist();
   toast(isNew?'已添加 ✓':'已修改 ✓');
@@ -1449,6 +1496,28 @@ document.getElementById('edSessDelete').onclick=()=>{
   save(DB); sessModalBg.classList.add('hidden');
   renderToday(); renderHist(); toast('已删除整次训练');
 };
+
+/* ========= 动作历史弹窗 ========= */
+const exHistBg=document.getElementById('exHistBg');
+document.getElementById('exHistClose').onclick=()=>exHistBg.classList.add('hidden');
+exHistBg.onclick=(ev)=>{ if(ev.target===exHistBg) exHistBg.classList.add('hidden'); };
+function openExHistory(exId, name){
+  document.getElementById('exHistTitle').textContent='📈 '+(name||'动作')+' · 历史';
+  const body=document.getElementById('exHistBody');
+  let list = exId ? DB.entries.filter(e=>e.exId===exId) : DB.entries.filter(e=>e.name===name);
+  list.sort((a,b)=> a.date<b.date?1:a.date>b.date?-1:0);
+  if(!list.length){ body.innerHTML='<div class="exh-empty">还没有这个动作的历史记录</div>'; exHistBg.classList.remove('hidden'); return; }
+  body.innerHTML=list.map(e=>{
+    const best=e.sets.reduce((m,s)=> s.w>m?s.w:m, 0);
+    const vol=e.sets.reduce((a,s)=>a+s.w*s.r,0);
+    const tags=e.sets.map(s=>`<span class="tag${s.done?' done':''}">${s.w}kg×${s.r}</span>`).join('');
+    return `<div class="exh-day">
+      <div class="exh-d"><span>📅 ${e.date}</span><span class="exh-best">最重 ${best}kg · 容量 ${vol.toFixed(0)}kg</span></div>
+      <div class="exh-sets">${tags}</div>
+    </div>`;
+  }).join('');
+  exHistBg.classList.remove('hidden');
+}
 
 /* ========= 启动 ========= */
 refreshSuggest(); renderToday();
