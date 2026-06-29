@@ -163,6 +163,24 @@
   .sess .s-arrow{display:inline-block;color:var(--sub);font-size:14px}
   .hist-body{margin-top:2px}
   .hist-day .sess{margin-top:18px}
+  /* 历史日历视图 */
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+  .cal-head .cal-nav{background:var(--card);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;font-size:18px;width:40px;height:40px;cursor:pointer}
+  .cal-head .cal-title{font-size:16px;font-weight:700}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:12px}
+  .cal-grid .cal-wd{text-align:center;font-size:12px;color:var(--sub);padding:4px 0}
+  .cal-cell{aspect-ratio:1;border:1px solid var(--line);border-radius:10px;background:var(--card);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    font-size:14px;color:var(--text);cursor:default;position:relative}
+  .cal-cell.empty{border:none;background:transparent}
+  .cal-cell.other{color:var(--sub);opacity:.4}
+  .cal-cell.today{border-color:var(--accent)}
+  .cal-cell.has{background:rgba(79,156,249,.16);border-color:var(--accent);cursor:pointer}
+  .cal-cell.has.sel{background:rgba(54,194,117,.22);border-color:var(--green)}
+  .cal-cell .cal-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+  .cal-cell .cal-vol{font-size:9px;color:var(--accent);line-height:1}
+  .cal-detail{margin-top:8px}
   .ex-actions{display:flex;gap:8px;margin-top:10px}
   .modal .set-row{grid-template-columns:30px 1fr 1fr 70px 32px}
   .modal .set-row .idx{font-size:13px;color:var(--sub);text-align:center}
@@ -237,12 +255,17 @@
 
   <!-- ===== 历史页 ===== -->
   <section id="page-hist" class="hidden">
+    <div class="seg" id="histViewSeg" style="margin-top:14px">
+      <button data-hv="cal" class="active">📅 日历</button>
+      <button data-hv="list">📋 列表</button>
+    </div>
     <div class="sel-bar">
       <button class="btn ghost sm" id="selToggle">勾选导出</button>
       <button class="btn sm hidden" id="selExport">导出所选</button>
       <button class="btn ghost sm hidden" id="selCancel">取消</button>
       <span class="scount" id="selCount"></span>
     </div>
+    <div id="histCal"></div>
     <div id="histList"></div>
   </section>
 
@@ -543,6 +566,8 @@ function setSession(date, obj){
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function todayStr(d){ d=d||new Date(); const z=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+function parseDate(s){ const p=String(s).split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
+function weekdayCn(s){ return '周'+'日一二三四五六'[parseDate(s).getDay()]; }
 
 /* ========= 通用 UI ========= */
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg;
@@ -572,8 +597,8 @@ function sessionHeader(date, list, opts={}){
   head.innerHTML=`
     <div class="s-top">
       <div>
-        <div class="s-title">${opts.collapsible?`<span class="s-arrow">${opts.expanded?'▾':'▸'}</span> `:''}${s.title? s.title : '一次训练'}</div>
-        <div class="s-date">📅 ${date}</div>
+        <div class="s-title">${opts.collapsible?`<span class="s-arrow">${opts.expanded?'▾':'▸'}</span> `:''}📅 ${date} ${weekdayCn(date)}</div>
+        <div class="s-date">${s.title? s.title : '一次训练'}</div>
       </div>
       <button class="btn ghost sm" data-sedit>编辑训练</button>
     </div>
@@ -697,6 +722,9 @@ function renderToday(){
 
 /* ========= 渲染历史 ========= */
 let selMode=false;
+let histView='cal';
+let calCursor=todayStr().slice(0,7); // 'YYYY-MM'
+let calOpenDay='';
 const selDays=new Set();
 const expandDays=new Set();
 function copySessionToToday(srcDate){
@@ -717,6 +745,76 @@ function copySessionToToday(srcDate){
   toast(`已复制 ${list.length} 个动作到 ${dest}`);
 }
 function renderHist(){
+  const cal=document.getElementById('histCal'), box=document.getElementById('histList');
+  if(histView==='cal'){ cal.classList.remove('hidden'); box.classList.add('hidden'); renderHistCal(); }
+  else { cal.classList.add('hidden'); box.classList.remove('hidden'); renderHistList(); }
+}
+function histDayBody(d, list){
+  const body=document.createElement('div'); body.className='hist-body';
+  list.forEach(e=>body.appendChild(entryCard(e)));
+  const cpy=document.createElement('button'); cpy.className='btn sm'; cpy.style.margin='8px 0 4px';
+  cpy.textContent='📋 复制到今天';
+  cpy.onclick=(ev)=>{ ev.stopPropagation(); copySessionToToday(d); };
+  body.appendChild(cpy);
+  return body;
+}
+function renderHistCal(){
+  const cal=document.getElementById('histCal'); cal.innerHTML='';
+  const days={};
+  DB.entries.forEach(e=>{ (days[e.date]=days[e.date]||[]).push(e); });
+  const ymp=calCursor.split('-').map(Number); const yy=ymp[0], mm=ymp[1];
+  const startWd=new Date(yy, mm-1, 1).getDay();
+  const daysInMonth=new Date(yy, mm, 0).getDate();
+  const today=todayStr();
+  const wd='\u65e5\u4e00\u4e8c\u4e09\u56db\u4e94\u516d';
+  const head=document.createElement('div'); head.className='cal-head';
+  head.innerHTML='<button class="cal-nav" data-mv="-1">\u2039</button>'
+    +'<div class="cal-title">'+yy+' \u5e74 '+mm+' \u6708</div>'
+    +'<button class="cal-nav" data-mv="1">\u203a</button>';
+  head.querySelector('[data-mv="-1"]').onclick=function(){ calCursor=shiftMonth(calCursor,-1); calOpenDay=''; renderHistCal(); };
+  head.querySelector('[data-mv="1"]').onclick=function(){ calCursor=shiftMonth(calCursor,1); calOpenDay=''; renderHistCal(); };
+  cal.appendChild(head);
+  const grid=document.createElement('div'); grid.className='cal-grid';
+  for(let i=0;i<7;i++){ const c=document.createElement('div'); c.className='cal-wd'; c.textContent=wd[i]; grid.appendChild(c); }
+  for(let i=0;i<startWd;i++){ const c=document.createElement('div'); c.className='cal-cell empty'; grid.appendChild(c); }
+  for(let day=1;day<=daysInMonth;day++){
+    const ds=yy+'-'+String(mm).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+    const list=days[ds];
+    const c=document.createElement('div'); c.className='cal-cell';
+    if(ds===today) c.classList.add('today');
+    if(list && list.length){
+      c.classList.add('has');
+      if(selMode && selDays.has(ds)) c.classList.add('sel');
+      const vol=list.reduce((a,e)=>a+e.sets.reduce((x,s)=>x+s.w*s.r,0),0);
+      const volTxt=vol>=1000?(vol/1000).toFixed(1)+'k':vol.toFixed(0);
+      c.innerHTML='<span>'+day+'</span><span class="cal-dot"></span><span class="cal-vol">'+volTxt+'</span>';
+      c.onclick=function(){
+        if(selMode){
+          if(selDays.has(ds)) selDays.delete(ds); else selDays.add(ds);
+          updateSelCount(); renderHistCal(); return;
+        }
+        calOpenDay = calOpenDay===ds ? '' : ds; renderHistCal();
+      };
+    } else {
+      c.innerHTML='<span>'+day+'</span>';
+    }
+    grid.appendChild(c);
+  }
+  cal.appendChild(grid);
+  if(calOpenDay && days[calOpenDay]){
+    const dl=days[calOpenDay].sort((a,b)=>a.ts-b.ts);
+    const wrap=document.createElement('div'); wrap.className='cal-detail';
+    wrap.appendChild(sessionHeader(calOpenDay, dl, {showDone:true}));
+    wrap.appendChild(histDayBody(calOpenDay, dl));
+    cal.appendChild(wrap);
+  }
+}
+function shiftMonth(ym, delta){
+  let p=ym.split('-').map(Number); let y=p[0], m=p[1]; m+=delta;
+  if(m<1){ m=12; y--; } else if(m>12){ m=1; y++; }
+  return y+'-'+String(m).padStart(2,'0');
+}
+function renderHistList(){
   const box=document.getElementById('histList'); box.innerHTML='';
   if(!DB.entries.length){ box.innerHTML='<div class="empty">还没有任何记录</div>'; return; }
   const byDay={};
@@ -738,15 +836,7 @@ function renderHist(){
     head.classList.add('clickable');
     head.onclick=()=>{ if(expandDays.has(d)) expandDays.delete(d); else expandDays.add(d); renderHist(); };
     wrap.appendChild(head);
-    if(expanded){
-      const body=document.createElement('div'); body.className='hist-body';
-      list.forEach(e=>body.appendChild(entryCard(e)));
-      const cpy=document.createElement('button'); cpy.className='btn sm'; cpy.style.margin='8px 0 4px';
-      cpy.textContent='📋 复制到今天';
-      cpy.onclick=(ev)=>{ ev.stopPropagation(); copySessionToToday(d); };
-      body.appendChild(cpy);
-      wrap.appendChild(body);
-    }
+    if(expanded) wrap.appendChild(histDayBody(d, list));
     box.appendChild(wrap);
   });
 }
@@ -772,6 +862,13 @@ document.getElementById('selExport').onclick=()=>{
   if(!selDays.size){ toast('请先勾选要导出的训练日'); return; }
   showModal('所选训练（点复制后粘给大模型）', toMarkdown([...selDays]));
 };
+document.getElementById('histViewSeg').querySelectorAll('[data-hv]').forEach(btn=>{
+  btn.onclick=()=>{
+    histView=btn.dataset.hv;
+    document.querySelectorAll('#histViewSeg [data-hv]').forEach(b=>b.classList.toggle('active', b===btn));
+    renderHist();
+  };
+});
 
 /* ========= 导出 ========= */
 function toMarkdown(daysFilter){
