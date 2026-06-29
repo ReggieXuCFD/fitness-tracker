@@ -111,6 +111,17 @@
   .setck .sv{font-size:15px;font-weight:600}
   .setck .sr{font-size:12px;color:var(--sub);margin-left:auto}
   .setck.done .sv{color:var(--green);text-decoration:line-through;opacity:.7}
+  .setrow{display:flex;align-items:center;gap:8px;background:var(--card2);
+    border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px}
+  .setrow input{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:14px}
+  .setrow input[type=checkbox]{width:20px;height:20px;flex:0 0 auto;accent-color:var(--green);margin:0}
+  .setrow .ri{font-size:13px;color:var(--sub);min-width:18px;text-align:center}
+  .setrow .rw{width:70px}
+  .setrow .rr{width:60px}
+  .setrow .rrest{width:74px}
+  .setrow .rx{background:transparent;border:none;color:var(--sub);font-size:18px;line-height:1;padding:2px 6px;cursor:pointer;border-radius:6px}
+  .setrow .rx:hover{background:var(--line);color:var(--danger)}
+  .setrow.done .rw,.setrow.done .rr,.setrow.done .rrest{color:var(--green);text-decoration:line-through;opacity:.7}
   /* 组间休息倒计时条（紧凑可拖动小浮窗） */
   .rest-bar{position:fixed;right:12px;bottom:80px;left:auto;width:210px;
     background:var(--card);border:1px solid var(--accent);border-radius:14px;padding:10px 12px;
@@ -552,12 +563,17 @@ function entryCard(e, interactive){
     </div>
     ${interactive
       ? `<div class="sets-ck">${e.sets.map((s,i)=>`
-          <label class="setck${s.done?' done':''}" data-i="${i}">
-            <input type="checkbox" ${s.done?'checked':''}>
-            <span class="si">${i+1}</span>
-            <span class="sv">${s.w}kg × ${s.r}</span>
-            <span class="sr">${s.rest?`休 ${s.rest}s`:''}</span>
-          </label>`).join('')}</div>
+          <div class="setrow${s.done?' done':''}" data-i="${i}">
+            <input type="checkbox" class="rdone" ${s.done?'checked':''}>
+            <span class="ri">${i+1}</span>
+            <input class="rw" type="number" inputmode="decimal" placeholder="kg" value="${s.w}">
+            <span style="color:var(--sub);font-size:13px">kg ×</span>
+            <input class="rr" type="number" inputmode="numeric" placeholder="次" value="${s.r}">
+            <span style="color:var(--sub);font-size:13px">次</span>
+            <input class="rrest" type="number" inputmode="numeric" placeholder="休息s" value="${s.rest||''}">
+            <span style="color:var(--sub);font-size:13px">s</span>
+            <button class="rx" title="删除该组">×</button>
+          </div>`).join('')}</div>
           <button class="add-set sm" data-addset>+ 增加一组</button>`
       : `<div class="setline">${e.sets.map(s=>`<span class="tag${s.done?' done':''}">${s.done?'✓ ':''}${fmtSet(s)}</span>`).join('')}</div>`}
     ${e.note?`<div class="note">📌 ${e.note}</div>`:''}`;
@@ -576,13 +592,38 @@ function entryCard(e, interactive){
       e.sets.push({w:last.w,r:last.r,rest:last.rest,done:false});
       save(DB); renderToday();
     };
-    div.querySelectorAll('.setck').forEach(lbl=>{
-      const i=+lbl.dataset.i, cb=lbl.querySelector('input');
-      cb.onchange=()=>{
-        e.sets[i].done=cb.checked; lbl.classList.toggle('done',cb.checked); save(DB);
+    div.querySelectorAll('.setrow').forEach(row=>{
+      const i=+row.dataset.i;
+      const doneCb=row.querySelector('.rdone');
+      const wInput=row.querySelector('.rw');
+      const rInput=row.querySelector('.rr');
+      const restInput=row.querySelector('.rrest');
+      const xBtn=row.querySelector('.rx');
+      function updateSet(){
+        e.sets[i].w=parseFloat(wInput.value)||0;
+        e.sets[i].r=parseInt(rInput.value)||0;
+        e.sets[i].rest=parseInt(restInput.value)||0;
+        save(DB);
+        // 只更新本卡片内的 meta，不重渲染，避免输入焦点丢失
+        const vol=e.sets.reduce((a,s)=>a+s.w*s.r,0);
         const meta=div.querySelector('.meta');
         if(meta) meta.textContent=`${e.sets.length} 组 · 容量 ${vol.toFixed(0)} kg · 已完成 ${e.sets.filter(s=>s.done).length}/${e.sets.length}`;
-        if(cb.checked && e.sets[i].rest>0) startRest(e.sets[i].rest, `${e.name} · 第${i+1}组后`);
+      }
+      doneCb.onchange=()=>{
+        e.sets[i].done=doneCb.checked;
+        row.classList.toggle('done',doneCb.checked);
+        save(DB);
+        const meta=div.querySelector('.meta');
+        if(meta) meta.textContent=`${e.sets.length} 组 · 容量 ${e.sets.reduce((a,s)=>a+s.w*s.r,0).toFixed(0)} kg · 已完成 ${e.sets.filter(s=>s.done).length}/${e.sets.length}`;
+        if(doneCb.checked && e.sets[i].rest>0) startRest(e.sets[i].rest, `${e.name} · 第${i+1}组后`);
+      };
+      wInput.oninput=updateSet;
+      rInput.oninput=updateSet;
+      restInput.oninput=updateSet;
+      xBtn.onclick=()=>{
+        if(e.sets.length<=1){ toast('至少保留一组'); return; }
+        e.sets.splice(i,1);
+        save(DB); renderToday();
       };
     });
   }
