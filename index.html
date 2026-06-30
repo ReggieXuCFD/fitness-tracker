@@ -179,6 +179,17 @@
   .part-chip{font-size:14px;padding:7px 14px;border-radius:999px;background:var(--card2);
     border:1px solid var(--line);color:var(--sub);cursor:pointer}
   .part-chip.active{background:rgba(255,255,255,.05);border-color:var(--pc);color:var(--pc);font-weight:600}
+  /* 动作库管理页 */
+  .ex-mgr-grp{margin-top:18px}
+  .ex-mgr-grp .emg-h{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px}
+  .ex-mgr-grp .emg-dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+  .ex-mgr-grp .emg-cnt{font-size:12px;color:var(--sub);font-weight:400;margin-left:auto}
+  .ex-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:8px}
+  .ex-card .ec-name{width:100%;font-size:15px;font-weight:600;background:transparent;border:none;border-bottom:1px solid transparent;color:var(--text);padding:4px 0}
+  .ex-card .ec-name:focus{border-bottom-color:var(--accent)}
+  .ex-card .ec-parts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .ex-card .ec-chip{font-size:13px;padding:5px 11px;border-radius:999px;background:var(--card2);border:1px solid var(--line);color:var(--sub);cursor:pointer}
+  .ex-card .ec-chip.active{background:rgba(255,255,255,.05);border-color:var(--pc);color:var(--pc);font-weight:600}
   .ex-actions{display:flex;gap:8px;margin-top:10px}
   .modal .set-row{grid-template-columns:30px 1fr 1fr 70px 32px}
   .modal .set-row .idx{font-size:13px;color:var(--sub);text-align:center}
@@ -321,12 +332,18 @@
       <button class="btn green" id="addMealBtn">＋ 添加饮食</button>
     </div>
   </section>
+
+  <!-- ===== 动作库管理页 ===== -->
+  <section id="page-ex" class="hidden">
+    <div id="exManageList"></div>
+  </section>
 </div>
 
 <nav class="tabbar">
   <button data-page="log" class="active"><span class="ic">📝</span>记录</button>
   <button data-page="diet"><span class="ic">🍱</span>饮食</button>
   <button data-page="hist"><span class="ic">📚</span>历史</button>
+  <button data-page="ex"><span class="ic">🏋️</span>动作</button>
   <button data-page="data"><span class="ic">📤</span>数据</button>
 </nav>
 
@@ -1272,9 +1289,11 @@ document.querySelectorAll('.tabbar button').forEach(b=>{
     document.getElementById('page-diet').classList.toggle('hidden',p!=='diet');
     document.getElementById('page-hist').classList.toggle('hidden',p!=='hist');
     document.getElementById('page-data').classList.toggle('hidden',p!=='data');
+    document.getElementById('page-ex').classList.toggle('hidden',p!=='ex');
     if(p==='diet') renderDiet();
     if(p==='hist') renderHist();
     if(p==='data') renderStat();
+    if(p==='ex') renderExManage();
   };
 });
 
@@ -1494,6 +1513,60 @@ function openExHistory(exId, name){
     </div>`;
   }).join('');
   exHistBg.classList.remove('hidden');
+}
+
+/* ========= 动作库管理页 ========= */
+function renderExManage(){
+  const box=document.getElementById('exManageList');
+  const exs=[...DB.exercises].sort((a,b)=>a.name.localeCompare(b.name,'zh'));
+  if(!exs.length){ box.innerHTML='<div class="empty">还没有动作。去「记录」页添加动作后，这里就能管理啦。</div>'; return; }
+  const groups=[...PARTS, ''];
+  let html='';
+  groups.forEach(part=>{
+    const list=exs.filter(e=>(e.part||'')===part);
+    if(!list.length) return;
+    const label=part||'未标部位';
+    const color=part?PART_COLOR[part]:'var(--sub)';
+    html+=`<div class="ex-mgr-grp">
+      <div class="emg-h"><span class="emg-dot" style="background:${color}"></span>${label}<span class="emg-cnt">${list.length} 个</span></div>
+      ${list.map(e=>exManageCard(e)).join('')}
+    </div>`;
+  });
+  box.innerHTML=html;
+  box.querySelectorAll('.ex-card').forEach(card=>{
+    const id=card.dataset.id;
+    const nameInput=card.querySelector('.ec-name');
+    nameInput.onchange=()=>renameExercise(id, nameInput.value);
+    card.querySelectorAll('.ec-chip').forEach(chip=>{
+      chip.onclick=()=>setExercisePart(id, chip.dataset.part);
+    });
+  });
+}
+function exManageCard(e){
+  const chips=PARTS.map(p=>{
+    const on=(e.part||'')===p;
+    const style=on?` style="--pc:${PART_COLOR[p]}"`:'';
+    return `<span class="ec-chip${on?' active':''}"${style} data-part="${p}">${p}</span>`;
+  }).join('');
+  return `<div class="ex-card" data-id="${e.id}">
+    <input class="ec-name" value="${(e.name||'').replace(/"/g,'&quot;')}">
+    <div class="ec-parts">${chips}</div>
+  </div>`;
+}
+function setExercisePart(id, part){
+  const ex=DB.exercises.find(x=>x.id===id); if(!ex) return;
+  ex.part = ex.part===part ? '' : part;
+  save(DB); renderExManage(); renderToday();
+}
+function renameExercise(id, name){
+  const key=(name||'').trim();
+  const ex=DB.exercises.find(x=>x.id===id); if(!ex) return;
+  if(!key){ renderExManage(); return; }
+  if(DB.exercises.some(x=>x.id!==id && x.name.trim()===key)){ toast('已有同名动作'); renderExManage(); return; }
+  ex.name=key;
+  DB.entries.forEach(en=>{ if(en.exId===id) en.name=key; });
+  save(DB); refreshSuggest(); renderExManage(); renderToday();
+  toast('已重命名');
 }
 
 /* ========= 启动 ========= */
